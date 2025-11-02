@@ -18,7 +18,7 @@ class CobolEditor:
         self.current_file = None
         self.working_directory = None
         self.search_index = "1.0"
-        self.font_size = 11  # Default font size
+        self.font_size = 14  # Default font size (increased for better readability)
         self.font_family = 'Courier New'
         self.current_theme = 'Light'  # Default theme
 
@@ -148,9 +148,12 @@ class CobolEditor:
         self.text_area.bind('<Control-s>', lambda e: self.save_file())
         self.text_area.bind('<Control-o>', lambda e: self.open_file())
         self.text_area.bind('<Control-n>', lambda e: self.new_file())
-        self.text_area.bind('<Control-plus>', lambda e: (self.increase_font_size(), "break")[1])
-        self.text_area.bind('<Control-equal>', lambda e: (self.increase_font_size(), "break")[1])  # Ctrl+= (same as Ctrl++)
-        self.text_area.bind('<Control-minus>', lambda e: (self.decrease_font_size(), "break")[1])
+        self.text_area.bind('<Control-plus>', self.handle_increase_font)
+        self.text_area.bind('<Control-equal>', self.handle_increase_font)  # Ctrl+= (same as Ctrl++)
+        self.text_area.bind('<Control-minus>', self.handle_decrease_font)
+        self.text_area.bind('<Control-Key-plus>', self.handle_increase_font)  # Alternative binding
+        self.text_area.bind('<Control-Key-equal>', self.handle_increase_font)  # Alternative binding
+        self.text_area.bind('<Control-Key-minus>', self.handle_decrease_font)  # Alternative binding
 
         # Configure tags for syntax highlighting
         self.configure_tags()
@@ -462,6 +465,16 @@ class CobolEditor:
                            "Ctrl++ - Increase Font Size\n"
                            "Ctrl+- - Decrease Font Size")
 
+    def handle_increase_font(self, event=None):
+        """Handle increase font size event"""
+        self.increase_font_size()
+        return "break"
+
+    def handle_decrease_font(self, event=None):
+        """Handle decrease font size event"""
+        self.decrease_font_size()
+        return "break"
+
     def increase_font_size(self):
         """Increase font size"""
         if self.font_size < 72:  # Maximum font size
@@ -478,7 +491,7 @@ class CobolEditor:
 
     def reset_font_size(self):
         """Reset font size to default"""
-        self.font_size = 11
+        self.font_size = 14
         self.update_font()
         self.status_bar.config(text=f"Font size reset to: {self.font_size}")
 

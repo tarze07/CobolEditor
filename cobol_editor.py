@@ -3,10 +3,15 @@
 COBOL Editor with Syntax Highlighting and Search
 """
 
+import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 import re
 import os
+
+# Set CustomTkinter appearance mode and default color theme
+ctk.set_appearance_mode("System")  # Modes: "System" (default), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
 
 
 class CobolEditor:
@@ -97,22 +102,22 @@ class CobolEditor:
 
         # Create directory tree view
         theme = self.themes[self.current_theme]
-        self.tree_frame = tk.Frame(root, width=200, bg=theme['line_numbers_bg'])
+        self.tree_frame = ctk.CTkFrame(root, width=200, fg_color=theme['line_numbers_bg'])
         self.tree_frame.pack(side=tk.LEFT, fill=tk.Y)
         self.tree_frame.pack_propagate(False)  # Maintain fixed width
 
         # Add tree label
-        self.tree_label = tk.Label(self.tree_frame, text="Workspace",
-                                   bg=theme['line_numbers_bg'],
-                                   fg=theme['line_numbers_fg'],
+        self.tree_label = ctk.CTkLabel(self.tree_frame, text="Workspace",
+                                   fg_color=theme['line_numbers_bg'],
+                                   text_color=theme['line_numbers_fg'],
                                    font=(self.font_family, 9, 'bold'))
         self.tree_label.pack(side=tk.TOP, fill=tk.X, pady=2)
 
         # Create tree view with scrollbar
-        tree_scroll_frame = tk.Frame(self.tree_frame, bg=theme['line_numbers_bg'])
+        tree_scroll_frame = ctk.CTkFrame(self.tree_frame, fg_color=theme['line_numbers_bg'])
         tree_scroll_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        tree_scrollbar = tk.Scrollbar(tree_scroll_frame)
+        tree_scrollbar = ctk.CTkScrollbar(tree_scroll_frame)
         tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.file_tree = ttk.Treeview(tree_scroll_frame, yscrollcommand=tree_scrollbar.set)
@@ -169,7 +174,7 @@ class CobolEditor:
         self.configure_ttk_colors()
 
         # Status bar
-        self.status_bar = tk.Label(root, text="Ready", anchor=tk.W)
+        self.status_bar = ctk.CTkLabel(root, text="Ready", anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def create_menu(self):
@@ -537,10 +542,10 @@ class CobolEditor:
         )
 
         # Update tree frame colors
-        self.tree_frame.config(bg=theme['line_numbers_bg'])
-        self.tree_label.config(
-            bg=theme['line_numbers_bg'],
-            fg=theme['line_numbers_fg']
+        self.tree_frame.configure(fg_color=theme['line_numbers_bg'])
+        self.tree_label.configure(
+            fg_color=theme['line_numbers_bg'],
+            text_color=theme['line_numbers_fg']
         )
 
         # Update menu colors to match the new theme
@@ -654,19 +659,19 @@ class CobolEditor:
 
     def show_search_results(self, search_text, results):
         """Show search results in a new window"""
-        results_window = tk.Toplevel(self.root)
+        results_window = ctk.CTkToplevel(self.root)
         results_window.title(f"Search Results: '{search_text}' ({len(results)} matches)")
         results_window.geometry("800x500")
 
         # Create frame for results
-        frame = tk.Frame(results_window)
+        frame = ctk.CTkFrame(results_window)
         frame.pack(fill=tk.BOTH, expand=True)
 
         # Add scrollbar
-        scrollbar = tk.Scrollbar(frame)
+        scrollbar = ctk.CTkScrollbar(frame)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Create listbox for results
+        # Create listbox for results (keep as tk.Listbox since CTk doesn't have a direct replacement)
         listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=(self.font_family, 10))
         listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=listbox.yview)
@@ -688,7 +693,7 @@ class CobolEditor:
         listbox.bind('<Double-Button-1>', on_double_click)
 
         # Add status label
-        status_label = tk.Label(results_window, text=f"Found {len(results)} matches. Double-click to open file.",
+        status_label = ctk.CTkLabel(results_window, text=f"Found {len(results)} matches. Double-click to open file.",
                                anchor=tk.W)
         status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
@@ -795,7 +800,7 @@ class CobolEditor:
 
 
 def main():
-    root = tk.Tk()
+    root = ctk.CTk()
     editor = CobolEditor(root)
 
     # Bind F3 for Find Next

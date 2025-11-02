@@ -156,6 +156,7 @@ class CodeEditor(QPlainTextEdit):
     """Code editor widget with line numbers"""
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.main_window = parent
         self.line_number_area = LineNumberArea(self)
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
@@ -168,6 +169,28 @@ class CodeEditor(QPlainTextEdit):
 
         # Enable tab key
         self.setTabStopDistance(40)
+
+    def contextMenuEvent(self, event):
+        """Create custom context menu with search in working directory option"""
+        menu = self.createStandardContextMenu()
+
+        # Get selected text
+        cursor = self.textCursor()
+        selected_text = cursor.selectedText().strip()
+
+        # Add separator and custom search action if text is selected
+        if selected_text:
+            menu.addSeparator()
+            search_action = QAction(f"Search '{selected_text}' in Working Directory", self)
+            search_action.triggered.connect(lambda: self.search_in_working_directory(selected_text))
+            menu.addAction(search_action)
+
+        menu.exec(event.globalPos())
+
+    def search_in_working_directory(self, text):
+        """Search for selected text in working directory"""
+        if self.main_window and hasattr(self.main_window, 'search_in_working_directory_for_text'):
+            self.main_window.search_in_working_directory_for_text(text)
 
     def line_number_area_width(self):
         """Calculate the width needed for line numbers"""
@@ -345,7 +368,7 @@ class CobolEditor(QMainWindow):
         splitter.addWidget(tree_container)
 
         # Create text editor
-        self.text_area = CodeEditor()
+        self.text_area = CodeEditor(self)
         self.highlighter = CobolSyntaxHighlighter(self.text_area.document(),
                                                    self.themes[self.current_theme])
         self.text_area.textChanged.connect(self.on_text_changed)
@@ -746,6 +769,37 @@ class CobolEditor(QMainWindow):
         else:
             QMessageBox.information(self, "Find in Files",
                                    f"No matches found for '{text}'")
+
+    def search_in_working_directory_for_text(self, text):
+        """Search for given text in working directory"""
+        if not self.working_directory:
+            QMessageBox.warning(self, "No Working Directory",
+                              "Please select a working directory first using File > Select Working Directory")
+            return
+
+        if not text:
+            return
+
+        # Search in files within working directory
+        results = []
+        for root, dirs, files in os.walk(self.working_directory):
+            for file in files:
+                if file.endswith(('.cbl', '.cob', '.cobol')):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            for line_num, line in enumerate(f, 1):
+                                if text.lower() in line.lower():
+                                    results.append((file_path, line_num, line.strip()))
+                    except Exception:
+                        continue
+
+        # Display results
+        if results:
+            self.show_search_results(text, results)
+        else:
+            QMessageBox.information(self, "Search in Working Directory",
+                                   f"No matches found for '{text}' in working directory")
 
     def show_search_results(self, search_text, results):
         """Show search results in a new window"""

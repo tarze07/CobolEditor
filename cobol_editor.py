@@ -18,9 +18,11 @@ class CobolEditor:
         self.current_file = None
         self.working_directory = None
         self.search_index = "1.0"
-        self.font_size = 14  # Default font size (increased for better readability)
-        self.font_family = 'Courier New'
+        self.font_size = 18  # Default font size (increased for better readability)
+        self.font_family = 'Consolas'  # Using Consolas for better readability
         self.current_theme = 'Light'  # Default theme
+
+        print(f"DEBUG: Starting COBOL Editor with font: {self.font_family}, size: {self.font_size}")
 
         # Initialize ttk style for ttk themes
         self.style = ttk.Style()
@@ -148,12 +150,14 @@ class CobolEditor:
         self.text_area.bind('<Control-s>', lambda e: self.save_file())
         self.text_area.bind('<Control-o>', lambda e: self.open_file())
         self.text_area.bind('<Control-n>', lambda e: self.new_file())
-        self.text_area.bind('<Control-plus>', self.handle_increase_font)
-        self.text_area.bind('<Control-equal>', self.handle_increase_font)  # Ctrl+= (same as Ctrl++)
-        self.text_area.bind('<Control-minus>', self.handle_decrease_font)
-        self.text_area.bind('<Control-Key-plus>', self.handle_increase_font)  # Alternative binding
-        self.text_area.bind('<Control-Key-equal>', self.handle_increase_font)  # Alternative binding
-        self.text_area.bind('<Control-Key-minus>', self.handle_decrease_font)  # Alternative binding
+
+        # Font size shortcuts - bind to root window for better compatibility
+        self.root.bind('<Control-plus>', self.handle_increase_font)
+        self.root.bind('<Control-equal>', self.handle_increase_font)  # Ctrl+= (same as Ctrl++)
+        self.root.bind('<Control-minus>', self.handle_decrease_font)
+        self.root.bind('<Control-underscore>', self.handle_decrease_font)  # Shift+- on some keyboards
+        self.root.bind('<Control-KP_Add>', self.handle_increase_font)  # Numpad +
+        self.root.bind('<Control-KP_Subtract>', self.handle_decrease_font)  # Numpad -
 
         # Configure tags for syntax highlighting
         self.configure_tags()
@@ -467,12 +471,16 @@ class CobolEditor:
 
     def handle_increase_font(self, event=None):
         """Handle increase font size event"""
+        print(f"DEBUG: Increase font called, current size: {self.font_size}")
         self.increase_font_size()
+        print(f"DEBUG: New font size: {self.font_size}")
         return "break"
 
     def handle_decrease_font(self, event=None):
         """Handle decrease font size event"""
+        print(f"DEBUG: Decrease font called, current size: {self.font_size}")
         self.decrease_font_size()
+        print(f"DEBUG: New font size: {self.font_size}")
         return "break"
 
     def increase_font_size(self):
@@ -491,7 +499,7 @@ class CobolEditor:
 
     def reset_font_size(self):
         """Reset font size to default"""
-        self.font_size = 14
+        self.font_size = 18
         self.update_font()
         self.status_bar.config(text=f"Font size reset to: {self.font_size}")
 

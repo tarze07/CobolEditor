@@ -22,6 +22,10 @@ class CobolEditor:
         self.font_family = 'Courier New'
         self.current_theme = 'Light'  # Default theme
 
+        # Initialize ttk style for ttk themes
+        self.style = ttk.Style()
+        self.current_ttk_theme = self.style.theme_use()  # Get current ttk theme
+
         # Define color themes
         self.themes = {
             'Light': {
@@ -184,13 +188,23 @@ class CobolEditor:
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
 
-        # Theme submenu
+        # Theme submenu (color schemes)
         theme_menu = tk.Menu(view_menu, tearoff=0)
-        view_menu.add_cascade(label="Theme", menu=theme_menu)
+        view_menu.add_cascade(label="Color Theme", menu=theme_menu)
         theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
         theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
         theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
         theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
+
+        # TTK Theme submenu (widget styles)
+        ttk_theme_menu = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="TTK Theme", menu=ttk_theme_menu)
+
+        # Add available ttk themes dynamically
+        available_themes = self.style.theme_names()
+        for theme in sorted(available_themes):
+            ttk_theme_menu.add_command(label=theme.capitalize(),
+                                      command=lambda t=theme: self.apply_ttk_theme(t))
 
         view_menu.add_separator()
         view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
@@ -510,6 +524,15 @@ class CobolEditor:
 
         # Update status bar
         self.status_bar.config(text=f"Theme changed to: {theme_name}")
+
+    def apply_ttk_theme(self, theme_name):
+        """Apply a ttk theme to the editor widgets"""
+        try:
+            self.style.theme_use(theme_name)
+            self.current_ttk_theme = theme_name
+            self.status_bar.config(text=f"TTK Theme changed to: {theme_name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to apply TTK theme '{theme_name}':\n{str(e)}")
 
     def find_in_files(self):
         """Open multi-file search dialog"""

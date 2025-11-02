@@ -4,10 +4,12 @@ Edytor COBOL z podświetlaniem składni, wyszukiwaniem w wielu plikach i regulac
 
 ## Funkcje
 
+- **Drzewo katalogów roboczych**: Przeglądarka katalogów w stylu Sublime Text - wybierz katalog roboczy i przeglądaj pliki w drzewie
 - **Podświetlanie składni COBOL**: Automatyczne kolorowanie słów kluczowych, komentarzy, stringów, liczb i sekcji
 - **Wyszukiwanie tekstu**: Funkcja Find (Ctrl+F) z możliwością wyszukiwania kolejnych wystąpień (F3)
 - **Wyszukiwanie w wielu plikach**: Funkcja Find in Files (Ctrl+Shift+F) pozwala wyszukiwać w wielu plikach COBOL jednocześnie
 - **Regulacja wielkości czcionki**: Możliwość powiększania (Ctrl++) i pomniejszania (Ctrl+-) czcionki
+- **Motywy kolorystyczne**: 4 dostępne motywy (Light, Dark, High Contrast, Monokai)
 - **Numeracja linii**: Automatyczna numeracja linii po lewej stronie
 - **Operacje na plikach**: New, Open, Save, Save As
 - **Skróty klawiszowe**: Szybki dostęp do podstawowych funkcji
@@ -46,6 +48,7 @@ chmod +x cobol_editor.py
 - **Open (Ctrl+O)**: Otwórz istniejący plik COBOL
 - **Save (Ctrl+S)**: Zapisz aktualny plik
 - **Save As**: Zapisz plik pod nową nazwą
+- **Select Working Directory**: Wybierz katalog roboczy do przeglądania w drzewie
 - **Exit**: Zamknij edytor
 
 **Edit**
@@ -55,6 +58,7 @@ chmod +x cobol_editor.py
 - **Select All (Ctrl+A)**: Zaznacz cały tekst
 
 **View**
+- **Theme**: Wybierz motyw kolorystyczny (Light, Dark, High Contrast, Monokai)
 - **Increase Font Size (Ctrl++)**: Powiększ czcionkę
 - **Decrease Font Size (Ctrl+-)**: Pomniejsz czcionkę
 - **Reset Font Size**: Przywróć domyślny rozmiar czcionki
@@ -86,6 +90,21 @@ Edytor rozpoznaje i koloruje:
 - **Komentarze**: Linie zaczynające się od * (zielony, kursywa)
 - **Stringi**: Tekst w cudzysłowach (czerwony)
 - **Liczby**: Wartości numeryczne (zielony)
+
+### Drzewo katalogów roboczych
+
+Edytor posiada panel boczny z drzewem katalogów (podobny do Sublime Text):
+
+1. Wybierz **File > Select Working Directory** lub użyj ikony w menu
+2. Wybierz katalog, który chcesz przeglądać
+3. Drzewo katalogów pojawi się po lewej stronie edytora
+4. Katalogi oznaczone są ikoną 📁
+5. Pliki COBOL (.cbl, .cob, .cobol) oznaczone są ikoną 📄
+6. Inne pliki oznaczone są ikoną 📋
+7. **Kliknij dwukrotnie** na plik, aby go otworzyć w edytorze
+8. Drzewo automatycznie sortuje katalogi przed plikami
+9. Ukryte pliki i katalogi (zaczynające się od .) są pomijane
+10. Panel drzewa dostosowuje się do aktualnego motywu kolorystycznego
 
 ### Wyszukiwanie
 

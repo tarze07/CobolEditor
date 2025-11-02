@@ -122,7 +122,7 @@ class CobolEditor:
 
         self.file_tree = ttk.Treeview(tree_scroll_frame, yscrollcommand=tree_scrollbar.set)
         self.file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scrollbar.config(command=self.file_tree.yview)
+        tree_scrollbar.configure(command=self.file_tree.yview)
 
         # Bind tree events
         self.file_tree.bind('<Double-Button-1>', self.on_tree_double_click)
@@ -179,7 +179,7 @@ class CobolEditor:
 
     def create_menu(self):
         self.menubar = tk.Menu(self.root)
-        self.root.config(menu=self.menubar)
+        self.root.configure(menu=self.menubar)
 
         # File menu
         self.file_menu = tk.Menu(self.menubar, tearoff=0)
@@ -376,7 +376,7 @@ class CobolEditor:
                     self.current_file = file_path
                     self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
                     self.highlight_syntax()
-                    self.status_bar.config(text=f"Opened: {file_path}")
+                    self.status_bar.configure(text=f"Opened: {file_path}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
@@ -387,7 +387,7 @@ class CobolEditor:
                 content = self.text_area.get('1.0', 'end-1c')
                 with open(self.current_file, 'w') as file:
                     file.write(content)
-                self.status_bar.config(text=f"Saved: {self.current_file}")
+                self.status_bar.configure(text=f"Saved: {self.current_file}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
         else:
@@ -407,7 +407,7 @@ class CobolEditor:
                     file.write(content)
                 self.current_file = file_path
                 self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
-                self.status_bar.config(text=f"Saved as: {file_path}")
+                self.status_bar.configure(text=f"Saved as: {file_path}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
 
@@ -438,7 +438,7 @@ class CobolEditor:
             self.text_area.see(pos)
             self.text_area.mark_set('insert', pos)
             self.search_index = end_pos
-            self.status_bar.config(text=f"Found: {self.search_text} at {pos}")
+            self.status_bar.configure(text=f"Found: {self.search_text} at {pos}")
         else:
             # Wrap around to beginning
             self.search_index = "1.0"
@@ -450,7 +450,7 @@ class CobolEditor:
                 self.text_area.see(pos)
                 self.text_area.mark_set('insert', pos)
                 self.search_index = end_pos
-                self.status_bar.config(text=f"Found: {self.search_text} at {pos} (wrapped)")
+                self.status_bar.configure(text=f"Found: {self.search_text} at {pos} (wrapped)")
             else:
                 messagebox.showinfo("Find", f"Text '{self.search_text}' not found")
 
@@ -493,20 +493,20 @@ class CobolEditor:
         if self.font_size < 72:  # Maximum font size
             self.font_size += 2
             self.update_font()
-            self.status_bar.config(text=f"Font size: {self.font_size}")
+            self.status_bar.configure(text=f"Font size: {self.font_size}")
 
     def decrease_font_size(self):
         """Decrease font size"""
         if self.font_size > 6:  # Minimum font size
             self.font_size -= 2
             self.update_font()
-            self.status_bar.config(text=f"Font size: {self.font_size}")
+            self.status_bar.configure(text=f"Font size: {self.font_size}")
 
     def reset_font_size(self):
         """Reset font size to default"""
         self.font_size = 18
         self.update_font()
-        self.status_bar.config(text=f"Font size reset to: {self.font_size}")
+        self.status_bar.configure(text=f"Font size reset to: {self.font_size}")
 
     def update_font(self):
         """Update font for all text widgets"""
@@ -561,7 +561,7 @@ class CobolEditor:
         self.highlight_syntax()
 
         # Update status bar
-        self.status_bar.config(text=f"Theme changed to: {theme_name}")
+        self.status_bar.configure(text=f"Theme changed to: {theme_name}")
 
     def apply_ttk_theme(self, theme_name):
         """Apply a ttk theme to the editor widgets"""
@@ -572,7 +572,7 @@ class CobolEditor:
             # Configure ttk widget colors to match the current color theme
             self.configure_ttk_colors()
 
-            self.status_bar.config(text=f"TTK Theme changed to: {theme_name}")
+            self.status_bar.configure(text=f"TTK Theme changed to: {theme_name}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply TTK theme '{theme_name}':\n{str(e)}")
 
@@ -674,7 +674,7 @@ class CobolEditor:
         # Create listbox for results (keep as tk.Listbox since CTk doesn't have a direct replacement)
         listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=(self.font_family, 10))
         listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=listbox.yview)
+        scrollbar.configure(command=listbox.yview)
 
         # Add results to listbox
         for file_path, line_num, line_text in results:
@@ -712,7 +712,7 @@ class CobolEditor:
                 self.text_area.mark_set('insert', f"{line_num}.0")
                 self.text_area.see(f"{line_num}.0")
 
-                self.status_bar.config(text=f"Opened: {file_path} at line {line_num}")
+                self.status_bar.configure(text=f"Opened: {file_path} at line {line_num}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
@@ -722,7 +722,7 @@ class CobolEditor:
         if directory:
             self.working_directory = directory
             self.populate_tree()
-            self.status_bar.config(text=f"Working directory: {directory}")
+            self.status_bar.configure(text=f"Working directory: {directory}")
 
     def populate_tree(self):
         """Populate the tree view with files and directories"""
@@ -789,7 +789,7 @@ class CobolEditor:
                             self.current_file = file_path
                             self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
                             self.highlight_syntax()
-                            self.status_bar.config(text=f"Opened: {file_path}")
+                            self.status_bar.configure(text=f"Opened: {file_path}")
                     except Exception as e:
                         messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 

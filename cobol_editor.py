@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLabel, QFrame,
     QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidget,
-    QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu
+    QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu, QTabWidget
 )
 from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings
 from PySide6.QtGui import (
@@ -250,10 +250,12 @@ class CodeEditor(QPlainTextEdit):
 class CobolEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.current_file = None
         self.working_directory = None
         self.search_text = ""
         self.last_search_position = 0
+
+        # Track open files: {tab_index: {'path': file_path, 'modified': bool}}
+        self.open_files = {}
 
         # Initialize settings
         self.settings = QSettings('CobolEditor', 'CobolEditor')
@@ -367,12 +369,16 @@ class CobolEditor(QMainWindow):
 
         splitter.addWidget(tree_container)
 
-        # Create text editor
-        self.text_area = CodeEditor(self)
-        self.highlighter = CobolSyntaxHighlighter(self.text_area.document(),
-                                                   self.themes[self.current_theme])
-        self.text_area.textChanged.connect(self.on_text_changed)
-        splitter.addWidget(self.text_area)
+        # Create tab widget for multiple files
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.setMovable(True)
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+        splitter.addWidget(self.tab_widget)
+
+        # Create initial empty tab
+        self.create_new_tab()
 
         # Set splitter sizes (200px for tree, rest for editor)
         splitter.setSizes([200, 700])
@@ -445,7 +451,7 @@ class CobolEditor(QMainWindow):
 
         select_all_action = QAction("Select All", self)
         select_all_action.setShortcut(QKeySequence.SelectAll)
-        select_all_action.triggered.connect(self.text_area.selectAll)
+        select_all_action.triggered.connect(self.select_all_text)
         edit_menu.addAction(select_all_action)
 
         # View menu
@@ -482,6 +488,116 @@ class CobolEditor(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def create_new_tab(self, file_path=None, content=""):
+        """Create a new tab with a code editor"""
+        editor = CodeEditor(self)
+        highlighter = CobolSyntaxHighlighter(editor.document(), self.themes[self.current_theme])
+        editor.textChanged.connect(lambda: self.on_text_changed(editor))
+
+        # Apply current font settings
+        font = QFont(self.font_family, self.font_size)
+        font.setStyleHint(QFont.Monospace)
+        editor.setFont(font)
+
+        # Apply current theme
+        theme = self.themes[self.current_theme]
+        palette = editor.palette()
+        palette.setColor(QPalette.Base, QColor(theme['bg']))
+        palette.setColor(QPalette.Text, QColor(theme['fg']))
+        editor.setPalette(palette)
+
+        # Update line number area colors
+        line_palette = editor.line_number_area.palette()
+        line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        editor.line_number_area.setPalette(line_palette)
+
+        # Set content
+        if content:
+            editor.setPlainText(content)
+
+        # Determine tab title
+        if file_path:
+            tab_title = os.path.basename(file_path)
+        else:
+            tab_title = "Untitled"
+
+        # Add tab
+        tab_index = self.tab_widget.addTab(editor, tab_title)
+
+        # Track the file
+        self.open_files[tab_index] = {
+            'path': file_path,
+            'modified': False,
+            'highlighter': highlighter
+        }
+
+        # Switch to new tab
+        self.tab_widget.setCurrentIndex(tab_index)
+
+        return tab_index
+
+    def close_tab(self, index):
+        """Close a tab with save confirmation if modified"""
+        if index < 0 or index >= self.tab_widget.count():
+            return
+
+        editor = self.tab_widget.widget(index)
+        file_info = self.open_files.get(index, {})
+
+        # Check if modified
+        if file_info.get('modified', False) or (not file_info.get('path') and editor.toPlainText()):
+            file_name = file_info.get('path', 'Untitled')
+            if file_info.get('path'):
+                file_name = os.path.basename(file_name)
+
+            reply = QMessageBox.question(
+                self, "Close Tab",
+                f"Save changes to '{file_name}' before closing?",
+                QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel
+            )
+
+            if reply == QMessageBox.Save:
+                # Save before closing
+                current_index = self.tab_widget.currentIndex()
+                self.tab_widget.setCurrentIndex(index)
+                self.save_file()
+                self.tab_widget.setCurrentIndex(current_index)
+            elif reply == QMessageBox.Cancel:
+                return
+
+        # Remove tab and cleanup
+        self.tab_widget.removeTab(index)
+        if index in self.open_files:
+            del self.open_files[index]
+
+        # Reindex open_files dictionary
+        new_open_files = {}
+        for i in range(self.tab_widget.count()):
+            old_index = list(self.open_files.keys())[i] if i < len(self.open_files) else i
+            if old_index in self.open_files:
+                new_open_files[i] = self.open_files[old_index]
+        self.open_files = new_open_files
+
+        # Create new tab if all tabs are closed
+        if self.tab_widget.count() == 0:
+            self.create_new_tab()
+
+    def get_current_editor(self):
+        """Get the current active editor widget"""
+        return self.tab_widget.currentWidget()
+
+    def on_tab_changed(self, index):
+        """Handle tab change event"""
+        if index >= 0:
+            file_info = self.open_files.get(index, {})
+            file_path = file_info.get('path')
+
+            if file_path:
+                self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+            else:
+                self.setWindowTitle("COBOL Editor - Untitled")
+
     def load_settings(self):
         """Load user settings from QSettings"""
         # Load font settings
@@ -514,8 +630,8 @@ class CobolEditor(QMainWindow):
             if splitter:
                 splitter.restoreState(splitter_state)
 
-        # Apply font settings if text_area exists
-        if hasattr(self, 'text_area'):
+        # Apply font settings if tab_widget exists
+        if hasattr(self, 'tab_widget'):
             self.update_font()
 
     def save_settings(self):
@@ -547,58 +663,89 @@ class CobolEditor(QMainWindow):
         self.save_settings()
         event.accept()
 
-    def on_text_changed(self):
+    def on_text_changed(self, editor):
         """Handle text changes - triggers syntax highlighting automatically"""
-        pass
+        # Mark current tab as modified
+        current_index = self.tab_widget.currentIndex()
+        if current_index >= 0 and current_index in self.open_files:
+            if not self.open_files[current_index]['modified']:
+                self.open_files[current_index]['modified'] = True
+                # Add asterisk to tab title
+                current_title = self.tab_widget.tabText(current_index)
+                if not current_title.endswith('*'):
+                    self.tab_widget.setTabText(current_index, current_title + '*')
 
     def new_file(self):
-        """Create a new file"""
-        if self.text_area.toPlainText():
-            reply = QMessageBox.question(self, "New File",
-                                        "Discard current changes?",
-                                        QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
-                self.text_area.clear()
-                self.current_file = None
-                self.setWindowTitle("COBOL Editor - New File")
-        else:
-            self.text_area.clear()
-            self.current_file = None
-            self.setWindowTitle("COBOL Editor - New File")
+        """Create a new file in a new tab"""
+        self.create_new_tab()
 
     def open_file(self):
-        """Open a file"""
+        """Open a file in a new tab or switch to existing tab"""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Open File", "",
             "COBOL Files (*.cbl *.cob *.cobol);;All Files (*.*)"
         )
 
         if file_path:
+            # Check if file is already open
+            for tab_index, file_info in self.open_files.items():
+                if file_info.get('path') == file_path:
+                    # File already open, switch to that tab
+                    self.tab_widget.setCurrentIndex(tab_index)
+                    self.status_bar.showMessage(f"Switched to: {file_path}")
+                    return
+
+            # Open file in new tab
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
-                    self.text_area.setPlainText(content)
-                    self.current_file = file_path
-                    self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                    self.create_new_tab(file_path, content)
                     self.status_bar.showMessage(f"Opened: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
     def save_file(self):
-        """Save the current file"""
-        if self.current_file:
+        """Save the current file in current tab"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index < 0:
+            return
+
+        editor = self.get_current_editor()
+        if not editor:
+            return
+
+        file_info = self.open_files.get(current_index, {})
+        file_path = file_info.get('path')
+
+        if file_path:
             try:
-                content = self.text_area.toPlainText()
-                with open(self.current_file, 'w', encoding='utf-8') as file:
+                content = editor.toPlainText()
+                with open(file_path, 'w', encoding='utf-8') as file:
                     file.write(content)
-                self.status_bar.showMessage(f"Saved: {self.current_file}")
+
+                # Mark as not modified
+                self.open_files[current_index]['modified'] = False
+
+                # Remove asterisk from tab title
+                tab_title = os.path.basename(file_path)
+                self.tab_widget.setTabText(current_index, tab_title)
+
+                self.status_bar.showMessage(f"Saved: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file:\n{str(e)}")
         else:
             self.save_as_file()
 
     def save_as_file(self):
-        """Save the file with a new name"""
+        """Save the file with a new name in current tab"""
+        current_index = self.tab_widget.currentIndex()
+        if current_index < 0:
+            return
+
+        editor = self.get_current_editor()
+        if not editor:
+            return
+
         file_path, _ = QFileDialog.getSaveFileName(
             self, "Save As", "",
             "COBOL Files (*.cbl);;All Files (*.*)"
@@ -606,14 +753,29 @@ class CobolEditor(QMainWindow):
 
         if file_path:
             try:
-                content = self.text_area.toPlainText()
+                content = editor.toPlainText()
                 with open(file_path, 'w', encoding='utf-8') as file:
                     file.write(content)
-                self.current_file = file_path
+
+                # Update file info
+                self.open_files[current_index]['path'] = file_path
+                self.open_files[current_index]['modified'] = False
+
+                # Update tab title
+                tab_title = os.path.basename(file_path)
+                self.tab_widget.setTabText(current_index, tab_title)
+
+                # Update window title
                 self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
                 self.status_bar.showMessage(f"Saved as: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file:\n{str(e)}")
+
+    def select_all_text(self):
+        """Select all text in current tab"""
+        editor = self.get_current_editor()
+        if editor:
+            editor.selectAll()
 
     def find_text(self):
         """Open find dialog"""
@@ -624,26 +786,30 @@ class CobolEditor(QMainWindow):
             self.find_next()
 
     def find_next(self):
-        """Find next occurrence of search text"""
+        """Find next occurrence of search text in current tab"""
         if not self.search_text:
             self.find_text()
             return
 
-        cursor = self.text_area.textCursor()
-        document = self.text_area.document()
+        editor = self.get_current_editor()
+        if not editor:
+            return
+
+        cursor = editor.textCursor()
+        document = editor.document()
 
         # Search from current position
         found_cursor = document.find(self.search_text, cursor,
                                      QTextDocument.FindCaseSensitively)
 
         if not found_cursor.isNull():
-            self.text_area.setTextCursor(found_cursor)
+            editor.setTextCursor(found_cursor)
             self.status_bar.showMessage(f"Found: {self.search_text}")
         else:
             # Wrap around to beginning
             found_cursor = document.find(self.search_text, 0)
             if not found_cursor.isNull():
-                self.text_area.setTextCursor(found_cursor)
+                editor.setTextCursor(found_cursor)
                 self.status_bar.showMessage(f"Found: {self.search_text} (wrapped)")
             else:
                 QMessageBox.information(self, "Find",
@@ -690,14 +856,19 @@ class CobolEditor(QMainWindow):
         self.status_bar.showMessage(f"Font size reset to: {self.font_size}")
 
     def update_font(self):
-        """Update font for text area"""
+        """Update font for all tabs"""
         font = QFont(self.font_family, self.font_size)
         font.setStyleHint(QFont.Monospace)
-        self.text_area.setFont(font)
-        self.text_area.update_line_number_area_width(0)
+
+        # Update all open tabs
+        for i in range(self.tab_widget.count()):
+            editor = self.tab_widget.widget(i)
+            if editor:
+                editor.setFont(font)
+                editor.update_line_number_area_width(0)
 
     def apply_theme(self, theme_name):
-        """Apply a color theme to the editor"""
+        """Apply a color theme to all editors"""
         if theme_name not in self.themes:
             QMessageBox.critical(self, "Error", f"Theme '{theme_name}' not found")
             return
@@ -705,17 +876,28 @@ class CobolEditor(QMainWindow):
         self.current_theme = theme_name
         theme = self.themes[theme_name]
 
-        # Update text area colors
-        palette = self.text_area.palette()
-        palette.setColor(QPalette.Base, QColor(theme['bg']))
-        palette.setColor(QPalette.Text, QColor(theme['fg']))
-        self.text_area.setPalette(palette)
+        # Update all tabs
+        for i in range(self.tab_widget.count()):
+            editor = self.tab_widget.widget(i)
+            if editor:
+                # Update text area colors
+                palette = editor.palette()
+                palette.setColor(QPalette.Base, QColor(theme['bg']))
+                palette.setColor(QPalette.Text, QColor(theme['fg']))
+                editor.setPalette(palette)
 
-        # Update line number area colors
-        line_palette = self.text_area.line_number_area.palette()
-        line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
-        line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
-        self.text_area.line_number_area.setPalette(line_palette)
+                # Update line number area colors
+                line_palette = editor.line_number_area.palette()
+                line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+                line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+                editor.line_number_area.setPalette(line_palette)
+
+                # Update syntax highlighter for this tab
+                if i in self.open_files and 'highlighter' in self.open_files[i]:
+                    self.open_files[i]['highlighter'].update_theme(theme)
+
+                # Force redraw
+                editor.line_number_area.update()
 
         # Update tree colors
         tree_palette = self.file_tree.palette()
@@ -729,12 +911,6 @@ class CobolEditor(QMainWindow):
         label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
         self.tree_label.setPalette(label_palette)
         self.tree_label.setAutoFillBackground(True)
-
-        # Update syntax highlighter
-        self.highlighter.update_theme(theme)
-
-        # Force redraw
-        self.text_area.line_number_area.update()
 
         self.save_settings()
         self.status_bar.showMessage(f"Theme changed to: {theme_name}")
@@ -830,20 +1006,37 @@ class CobolEditor(QMainWindow):
         dialog.exec()
 
     def open_file_at_line(self, file_path, line_num):
-        """Open a file and jump to specific line"""
+        """Open a file in a tab and jump to specific line"""
+        # Check if file is already open
+        for tab_index, file_info in self.open_files.items():
+            if file_info.get('path') == file_path:
+                # File already open, switch to that tab
+                self.tab_widget.setCurrentIndex(tab_index)
+                editor = self.get_current_editor()
+                if editor:
+                    # Jump to line
+                    cursor = editor.textCursor()
+                    cursor.movePosition(QTextCursor.Start)
+                    cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
+                    editor.setTextCursor(cursor)
+                    editor.centerCursor()
+                    self.status_bar.showMessage(f"Jumped to line {line_num} in {file_path}")
+                return
+
+        # Open file in new tab
         try:
             with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
-                self.text_area.setPlainText(content)
-                self.current_file = file_path
-                self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                tab_index = self.create_new_tab(file_path, content)
 
                 # Jump to line
-                cursor = self.text_area.textCursor()
-                cursor.movePosition(QTextCursor.Start)
-                cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
-                self.text_area.setTextCursor(cursor)
-                self.text_area.centerCursor()
+                editor = self.get_current_editor()
+                if editor:
+                    cursor = editor.textCursor()
+                    cursor.movePosition(QTextCursor.Start)
+                    cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
+                    editor.setTextCursor(cursor)
+                    editor.centerCursor()
 
                 self.status_bar.showMessage(f"Opened: {file_path} at line {line_num}")
         except Exception as e:
@@ -903,15 +1096,22 @@ class CobolEditor(QMainWindow):
             pass
 
     def on_tree_double_click(self, item, column):
-        """Handle double-click on tree item"""
+        """Handle double-click on tree item - open file in tab"""
         file_path = item.data(0, Qt.UserRole)
         if file_path and os.path.isfile(file_path):
+            # Check if file is already open
+            for tab_index, file_info in self.open_files.items():
+                if file_info.get('path') == file_path:
+                    # File already open, switch to that tab
+                    self.tab_widget.setCurrentIndex(tab_index)
+                    self.status_bar.showMessage(f"Switched to: {file_path}")
+                    return
+
+            # Open file in new tab
             try:
                 with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
-                    self.text_area.setPlainText(content)
-                    self.current_file = file_path
-                    self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                    self.create_new_tab(file_path, content)
                     self.status_bar.showMessage(f"Opened: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")

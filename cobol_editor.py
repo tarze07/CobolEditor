@@ -26,7 +26,8 @@ class CobolEditor:
         # Create line numbers
         self.line_numbers = tk.Text(root, width=4, padx=3, takefocus=0,
                                      border=0, background='lightgray',
-                                     state='disabled', wrap='none')
+                                     state='disabled', wrap='none',
+                                     font=(self.font_family, self.font_size))
         self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
 
         # Create scrollbar
@@ -46,9 +47,9 @@ class CobolEditor:
         self.text_area.bind('<Control-s>', lambda e: self.save_file())
         self.text_area.bind('<Control-o>', lambda e: self.open_file())
         self.text_area.bind('<Control-n>', lambda e: self.new_file())
-        self.text_area.bind('<Control-plus>', lambda e: self.increase_font_size())
-        self.text_area.bind('<Control-equal>', lambda e: self.increase_font_size())  # Ctrl+= (same as Ctrl++)
-        self.text_area.bind('<Control-minus>', lambda e: self.decrease_font_size())
+        self.text_area.bind('<Control-plus>', lambda e: (self.increase_font_size(), "break")[1])
+        self.text_area.bind('<Control-equal>', lambda e: (self.increase_font_size(), "break")[1])  # Ctrl+= (same as Ctrl++)
+        self.text_area.bind('<Control-minus>', lambda e: (self.decrease_font_size(), "break")[1])
 
         # Configure tags for syntax highlighting
         self.configure_tags()
@@ -348,6 +349,8 @@ class CobolEditor:
         """Update font for all text widgets"""
         # Update main text area font
         self.text_area.config(font=(self.font_family, self.font_size))
+        # Update line numbers font
+        self.line_numbers.config(font=(self.font_family, self.font_size))
         # Reconfigure tags with new font size
         self.configure_tags()
         # Reapply syntax highlighting

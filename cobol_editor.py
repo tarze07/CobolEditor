@@ -1,484 +1,638 @@
 #!/usr/bin/env python3
 """
 COBOL Editor with Syntax Highlighting and Search
-Kivy version
 """
 
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.gridlayout import GridLayout
-from kivy.uix.label import Label
-from kivy.uix.button import Button
-from kivy.uix.textinput import TextInput
-from kivy.uix.scrollview import ScrollView
-from kivy.uix.treeview import TreeView, TreeViewLabel
-from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserListView
-from kivy.uix.actionbar import ActionBar, ActionView, ActionPrevious, ActionButton, ActionGroup
-from kivy.uix.spinner import Spinner
-from kivy.core.window import Window
-from kivy.properties import StringProperty, NumericProperty, DictProperty
-from kivy.clock import Clock
-from kivy.graphics import Color, Rectangle
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 import re
 import os
 
 
-class CobolTextInput(TextInput):
-    """Custom TextInput widget for COBOL code editing with syntax highlighting"""
+class CobolEditor:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("COBOL Editor")
+        self.root.geometry("900x700")
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.font_name = 'RobotoMono-Regular'
-        self.font_size = 18
-        self.multiline = True
-        self.do_wrap = False
-        self.background_color = [1, 1, 1, 1]
-        self.foreground_color = [0, 0, 0, 1]
-        self.cursor_color = [0, 0, 0, 1]
-
-    def insert_text(self, substring, from_undo=False):
-        """Override to trigger syntax highlighting after text insertion"""
-        result = super().insert_text(substring, from_undo)
-        return result
-
-
-class LineNumbersLabel(Label):
-    """Widget to display line numbers"""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.font_name = 'RobotoMono-Regular'
-        self.font_size = 18
-        self.size_hint_x = None
-        self.width = 60
-        self.text_size = (self.width, None)
-        self.halign = 'right'
-        self.valign = 'top'
-        self.padding = [5, 0]
-
-    def update_line_numbers(self, text_widget):
-        """Update line numbers based on text content"""
-        if hasattr(text_widget, 'text'):
-            lines = text_widget.text.count('\n') + 1
-            self.text = '\n'.join(str(i) for i in range(1, lines + 1))
-
-
-class CobolEditor(BoxLayout):
-    """Main COBOL Editor widget"""
-
-    current_file = StringProperty(None, allownone=True)
-    font_size = NumericProperty(18)
-    current_theme = StringProperty('Light')
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = 'vertical'
-        self.search_text = ''
-        self.search_index = 0
+        self.current_file = None
         self.working_directory = None
+        self.search_index = "1.0"
+        self.font_size = 18  # Default font size (increased for better readability)
+        self.font_family = 'Consolas'  # Using Consolas for better readability
+        self.current_theme = 'Light'  # Default theme
+
+        print(f"DEBUG: Starting COBOL Editor with font: {self.font_family}, size: {self.font_size}")
+
+        # Initialize ttk style for ttk themes
+        self.style = ttk.Style()
+        self.current_ttk_theme = self.style.theme_use()  # Get current ttk theme
 
         # Define color themes
         self.themes = {
             'Light': {
-                'bg': [1, 1, 1, 1],
-                'fg': [0, 0, 0, 1],
-                'line_numbers_bg': [0.88, 0.88, 0.88, 1],
-                'line_numbers_fg': [0.33, 0.33, 0.33, 1],
-                'keyword': [0, 0, 1, 1],
-                'datatype': [0, 0.5, 0.5, 1],
-                'string': [0.64, 0.08, 0.08, 1],
-                'comment': [0, 0.5, 0, 1],
-                'number': [0.04, 0.52, 0.35, 1],
-                'division': [0.69, 0, 0.86, 1],
-                'section': [0.69, 0, 0.86, 1],
-                'search_bg': [1, 1, 0, 1],
-                'search_fg': [0, 0, 0, 1]
+                'bg': '#FFFFFF',
+                'fg': '#000000',
+                'line_numbers_bg': '#E0E0E0',
+                'line_numbers_fg': '#555555',
+                'keyword': '#0000FF',
+                'datatype': '#008080',
+                'string': '#A31515',
+                'comment': '#008000',
+                'number': '#098658',
+                'division': '#AF00DB',
+                'section': '#AF00DB',
+                'search_bg': '#FFFF00',
+                'search_fg': '#000000'
             },
             'Dark': {
-                'bg': [0.12, 0.12, 0.12, 1],
-                'fg': [0.83, 0.83, 0.83, 1],
-                'line_numbers_bg': [0.15, 0.15, 0.15, 1],
-                'line_numbers_fg': [0.52, 0.52, 0.52, 1],
-                'keyword': [0.34, 0.61, 0.84, 1],
-                'datatype': [0.31, 0.79, 0.69, 1],
-                'string': [0.81, 0.57, 0.47, 1],
-                'comment': [0.42, 0.60, 0.33, 1],
-                'number': [0.71, 0.81, 0.66, 1],
-                'division': [0.77, 0.53, 0.75, 1],
-                'section': [0.77, 0.53, 0.75, 1],
-                'search_bg': [0.32, 0.36, 0.42, 1],
-                'search_fg': [1, 1, 1, 1]
+                'bg': '#1E1E1E',
+                'fg': '#D4D4D4',
+                'line_numbers_bg': '#252526',
+                'line_numbers_fg': '#858585',
+                'keyword': '#569CD6',
+                'datatype': '#4EC9B0',
+                'string': '#CE9178',
+                'comment': '#6A9955',
+                'number': '#B5CEA8',
+                'division': '#C586C0',
+                'section': '#C586C0',
+                'search_bg': '#515C6A',
+                'search_fg': '#FFFFFF'
             },
             'High Contrast': {
-                'bg': [0, 0, 0, 1],
-                'fg': [1, 1, 1, 1],
-                'line_numbers_bg': [0.12, 0.12, 0.12, 1],
-                'line_numbers_fg': [1, 1, 1, 1],
-                'keyword': [0, 1, 1, 1],
-                'datatype': [0, 1, 0, 1],
-                'string': [1, 0, 1, 1],
-                'comment': [0.5, 1, 0, 1],
-                'number': [1, 1, 0, 1],
-                'division': [1, 0.53, 0, 1],
-                'section': [1, 0.53, 0, 1],
-                'search_bg': [1, 1, 0, 1],
-                'search_fg': [0, 0, 0, 1]
+                'bg': '#000000',
+                'fg': '#FFFFFF',
+                'line_numbers_bg': '#1E1E1E',
+                'line_numbers_fg': '#FFFFFF',
+                'keyword': '#00FFFF',
+                'datatype': '#00FF00',
+                'string': '#FF00FF',
+                'comment': '#7FFF00',
+                'number': '#FFFF00',
+                'division': '#FF8800',
+                'section': '#FF8800',
+                'search_bg': '#FFFF00',
+                'search_fg': '#000000'
             },
             'Monokai': {
-                'bg': [0.15, 0.16, 0.13, 1],
-                'fg': [0.97, 0.97, 0.95, 1],
-                'line_numbers_bg': [0.24, 0.24, 0.20, 1],
-                'line_numbers_fg': [0.56, 0.56, 0.54, 1],
-                'keyword': [0.98, 0.15, 0.45, 1],
-                'datatype': [0.40, 0.85, 0.94, 1],
-                'string': [0.90, 0.86, 0.45, 1],
-                'comment': [0.46, 0.44, 0.37, 1],
-                'number': [0.68, 0.51, 1, 1],
-                'division': [0.65, 0.89, 0.18, 1],
-                'section': [0.65, 0.89, 0.18, 1],
-                'search_bg': [0.29, 0.28, 0.24, 1],
-                'search_fg': [1, 1, 1, 1]
+                'bg': '#272822',
+                'fg': '#F8F8F2',
+                'line_numbers_bg': '#3E3D32',
+                'line_numbers_fg': '#90908A',
+                'keyword': '#F92672',
+                'datatype': '#66D9EF',
+                'string': '#E6DB74',
+                'comment': '#75715E',
+                'number': '#AE81FF',
+                'division': '#A6E22E',
+                'section': '#A6E22E',
+                'search_bg': '#49483E',
+                'search_fg': '#FFFFFF'
             }
         }
 
-        # Create UI
-        self.create_ui()
+        # Create menu bar
+        self.create_menu()
 
-    def create_ui(self):
-        """Create the user interface"""
-        # Action bar (menu)
-        self.action_bar = ActionBar()
-        action_view = ActionView()
-        action_view.add_widget(ActionPrevious(title='COBOL Editor', with_previous=False))
+        # Create directory tree view
+        theme = self.themes[self.current_theme]
+        self.tree_frame = tk.Frame(root, width=200, bg=theme['line_numbers_bg'])
+        self.tree_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.tree_frame.pack_propagate(False)  # Maintain fixed width
 
-        # File menu
-        file_menu = ActionGroup(text='File', mode='spinner')
-        file_menu.add_widget(ActionButton(text='New', on_press=self.new_file))
-        file_menu.add_widget(ActionButton(text='Open', on_press=self.open_file))
-        file_menu.add_widget(ActionButton(text='Save', on_press=self.save_file))
-        file_menu.add_widget(ActionButton(text='Save As', on_press=self.save_as_file))
-        file_menu.add_widget(ActionButton(text='Select Working Directory', on_press=self.select_working_directory))
-        file_menu.add_widget(ActionButton(text='Exit', on_press=self.exit_editor))
-        action_view.add_widget(file_menu)
+        # Add tree label
+        self.tree_label = tk.Label(self.tree_frame, text="Workspace",
+                                   bg=theme['line_numbers_bg'],
+                                   fg=theme['line_numbers_fg'],
+                                   font=(self.font_family, 9, 'bold'))
+        self.tree_label.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-        # Edit menu
-        edit_menu = ActionGroup(text='Edit', mode='spinner')
-        edit_menu.add_widget(ActionButton(text='Find', on_press=self.find_text))
-        edit_menu.add_widget(ActionButton(text='Find Next', on_press=self.find_next))
-        edit_menu.add_widget(ActionButton(text='Find in Files', on_press=self.find_in_files))
-        edit_menu.add_widget(ActionButton(text='Select All', on_press=self.select_all))
-        action_view.add_widget(edit_menu)
+        # Create tree view with scrollbar
+        tree_scroll_frame = tk.Frame(self.tree_frame, bg=theme['line_numbers_bg'])
+        tree_scroll_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        # View menu
-        view_menu = ActionGroup(text='View', mode='spinner')
-        view_menu.add_widget(ActionButton(text='Light Theme', on_press=lambda x: self.apply_theme('Light')))
-        view_menu.add_widget(ActionButton(text='Dark Theme', on_press=lambda x: self.apply_theme('Dark')))
-        view_menu.add_widget(ActionButton(text='High Contrast', on_press=lambda x: self.apply_theme('High Contrast')))
-        view_menu.add_widget(ActionButton(text='Monokai Theme', on_press=lambda x: self.apply_theme('Monokai')))
-        view_menu.add_widget(ActionButton(text='Increase Font', on_press=self.increase_font_size))
-        view_menu.add_widget(ActionButton(text='Decrease Font', on_press=self.decrease_font_size))
-        view_menu.add_widget(ActionButton(text='Reset Font', on_press=self.reset_font_size))
-        action_view.add_widget(view_menu)
+        tree_scrollbar = tk.Scrollbar(tree_scroll_frame)
+        tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Help menu
-        help_menu = ActionGroup(text='Help', mode='spinner')
-        help_menu.add_widget(ActionButton(text='About', on_press=self.show_about))
-        action_view.add_widget(help_menu)
+        self.file_tree = ttk.Treeview(tree_scroll_frame, yscrollcommand=tree_scrollbar.set)
+        self.file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scrollbar.config(command=self.file_tree.yview)
 
-        self.action_bar.add_widget(action_view)
-        self.add_widget(self.action_bar)
+        # Bind tree events
+        self.file_tree.bind('<Double-Button-1>', self.on_tree_double_click)
 
-        # Main content area
-        content_layout = BoxLayout(orientation='horizontal')
+        # Create line numbers
+        self.line_numbers = tk.Text(root, width=4, padx=3, takefocus=0,
+                                     border=0, background=theme['line_numbers_bg'],
+                                     foreground=theme['line_numbers_fg'],
+                                     state='disabled', wrap='none',
+                                     font=(self.font_family, self.font_size))
+        self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
 
-        # File tree (left panel)
-        self.tree_panel = BoxLayout(orientation='vertical', size_hint_x=0.2)
-        tree_label = Label(text='Workspace', size_hint_y=None, height=30, bold=True)
-        self.tree_panel.add_widget(tree_label)
+        # Create scrollbar
+        scrollbar = tk.Scrollbar(root)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        tree_scroll = ScrollView()
-        self.file_tree = TreeView(hide_root=True, size_hint_y=None)
-        self.file_tree.bind(minimum_height=self.file_tree.setter('height'))
-        tree_scroll.add_widget(self.file_tree)
-        self.tree_panel.add_widget(tree_scroll)
+        # Create text widget
+        self.text_area = tk.Text(root, wrap=tk.NONE, undo=True,
+                                  yscrollcommand=scrollbar.set,
+                                  font=(self.font_family, self.font_size),
+                                  background=theme['bg'],
+                                  foreground=theme['fg'],
+                                  insertbackground=theme['fg'])
+        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=self.text_area.yview)
 
-        content_layout.add_widget(self.tree_panel)
+        # Bind events
+        self.text_area.bind('<KeyRelease>', self.on_key_release)
+        self.text_area.bind('<Control-f>', lambda e: self.find_text())
+        self.text_area.bind('<Control-s>', lambda e: self.save_file())
+        self.text_area.bind('<Control-o>', lambda e: self.open_file())
+        self.text_area.bind('<Control-n>', lambda e: self.new_file())
 
-        # Editor area
-        editor_layout = BoxLayout(orientation='horizontal')
+        # Font size shortcuts - bind to root window for better compatibility
+        self.root.bind('<Control-plus>', self.handle_increase_font)
+        self.root.bind('<Control-equal>', self.handle_increase_font)  # Ctrl+= (same as Ctrl++)
+        self.root.bind('<Control-minus>', self.handle_decrease_font)
+        self.root.bind('<Control-underscore>', self.handle_decrease_font)  # Shift+- on some keyboards
+        self.root.bind('<Control-KP_Add>', self.handle_increase_font)  # Numpad +
+        self.root.bind('<Control-KP_Subtract>', self.handle_decrease_font)  # Numpad -
 
-        # Line numbers
-        line_scroll = ScrollView(size_hint_x=None, width=60, do_scroll_x=False)
-        self.line_numbers = LineNumbersLabel()
-        line_scroll.add_widget(self.line_numbers)
-        editor_layout.add_widget(line_scroll)
+        # Configure tags for syntax highlighting
+        self.configure_tags()
 
-        # Text area
-        text_scroll = ScrollView()
-        self.text_area = CobolTextInput()
-        self.text_area.bind(text=self.on_text_change)
-        text_scroll.add_widget(self.text_area)
-        editor_layout.add_widget(text_scroll)
+        # Configure menu colors to match the initial theme
+        self.configure_menu_colors()
 
-        content_layout.add_widget(editor_layout)
-        self.add_widget(content_layout)
+        # Configure ttk widget colors to match the initial theme
+        self.configure_ttk_colors()
 
         # Status bar
-        self.status_bar = Label(text='Ready', size_hint_y=None, height=30, halign='left')
-        self.status_bar.bind(size=self._update_status_bar)
-        self.add_widget(self.status_bar)
+        self.status_bar = tk.Label(root, text="Ready", anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        # Apply initial theme
-        self.apply_theme(self.current_theme)
+    def create_menu(self):
+        self.menubar = tk.Menu(self.root)
+        self.root.config(menu=self.menubar)
 
-        # Bind keyboard shortcuts
-        Window.bind(on_key_down=self.on_keyboard_down)
+        # File menu
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="File", menu=self.file_menu)
+        self.file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
+        self.file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
+        self.file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
+        self.file_menu.add_command(label="Save As", command=self.save_as_file)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Select Working Directory...", command=self.select_working_directory)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self.exit_editor)
 
-    def _update_status_bar(self, *args):
-        """Update status bar text size"""
-        self.status_bar.text_size = (self.status_bar.width, None)
+        # Edit menu
+        self.edit_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="Edit", menu=self.edit_menu)
+        self.edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
+        self.edit_menu.add_command(label="Find Next", command=self.find_next, accelerator="F3")
+        self.edit_menu.add_command(label="Find in Files...", command=self.find_in_files, accelerator="Ctrl+Shift+F")
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label="Select All", command=self.select_all, accelerator="Ctrl+A")
 
-    def on_keyboard_down(self, window, key, scancode, codepoint, modifiers):
-        """Handle keyboard shortcuts"""
-        if 'ctrl' in modifiers:
-            if codepoint == 'f':
-                self.find_text(None)
-                return True
-            elif codepoint == 's':
-                self.save_file(None)
-                return True
-            elif codepoint == 'o':
-                self.open_file(None)
-                return True
-            elif codepoint == 'n':
-                self.new_file(None)
-                return True
-            elif key == 61:  # Ctrl++ (equals key)
-                self.increase_font_size(None)
-                return True
-            elif key == 45:  # Ctrl+-
-                self.decrease_font_size(None)
-                return True
-        elif key == 286:  # F3
-            self.find_next(None)
-            return True
-        return False
+        # View menu
+        self.view_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="View", menu=self.view_menu)
 
-    def on_text_change(self, instance, value):
-        """Handle text changes"""
-        self.line_numbers.update_line_numbers(self.text_area)
-        # Note: Syntax highlighting in Kivy requires a different approach
-        # than tkinter. For simplicity, we'll use monochrome for now,
-        # but this can be enhanced with custom rendering
+        # Theme submenu (color schemes)
+        self.theme_menu = tk.Menu(self.view_menu, tearoff=0)
+        self.view_menu.add_cascade(label="Color Theme", menu=self.theme_menu)
+        self.theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
+        self.theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
+        self.theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
+        self.theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
 
-    def new_file(self, instance):
+        # TTK Theme submenu (widget styles)
+        self.ttk_theme_menu = tk.Menu(self.view_menu, tearoff=0)
+        self.view_menu.add_cascade(label="TTK Theme", menu=self.ttk_theme_menu)
+
+        # Add available ttk themes dynamically
+        available_themes = self.style.theme_names()
+        for theme in sorted(available_themes):
+            self.ttk_theme_menu.add_command(label=theme.capitalize(),
+                                      command=lambda t=theme: self.apply_ttk_theme(t))
+
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
+        self.view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
+        self.view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
+
+        # Help menu
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="Help", menu=self.help_menu)
+        self.help_menu.add_command(label="About", command=self.show_about)
+
+    def configure_tags(self):
+        """Configure text tags for COBOL syntax highlighting"""
+        theme = self.themes[self.current_theme]
+
+        # Keywords
+        self.text_area.tag_config('keyword', foreground=theme['keyword'],
+                                  font=(self.font_family, self.font_size, 'bold'))
+        # Data types
+        self.text_area.tag_config('datatype', foreground=theme['datatype'],
+                                  font=(self.font_family, self.font_size, 'bold'))
+        # Strings
+        self.text_area.tag_config('string', foreground=theme['string'])
+        # Comments
+        self.text_area.tag_config('comment', foreground=theme['comment'],
+                                  font=(self.font_family, self.font_size, 'italic'))
+        # Numbers
+        self.text_area.tag_config('number', foreground=theme['number'])
+        # Division headers
+        self.text_area.tag_config('division', foreground=theme['division'],
+                                  font=(self.font_family, self.font_size, 'bold'))
+        # Section headers
+        self.text_area.tag_config('section', foreground=theme['section'],
+                                  font=(self.font_family, self.font_size))
+        # Search highlight
+        self.text_area.tag_config('search', background=theme['search_bg'],
+                                  foreground=theme['search_fg'])
+
+    def get_cobol_patterns(self):
+        """Return regex patterns for COBOL syntax"""
+        return {
+            'division': r'\b(IDENTIFICATION|ENVIRONMENT|DATA|PROCEDURE)\s+DIVISION\b',
+            'section': r'\b(CONFIGURATION|INPUT-OUTPUT|FILE|WORKING-STORAGE|LINKAGE|LOCAL-STORAGE)\s+SECTION\b',
+            'keyword': r'\b(ACCEPT|ACCESS|ADD|ADDRESS|ADVANCING|AFTER|ALL|ALPHABET|ALPHABETIC|'
+                      r'ALPHABETIC-LOWER|ALPHABETIC-UPPER|ALPHANUMERIC|ALPHANUMERIC-EDITED|'
+                      r'ALSO|ALTER|ALTERNATE|AND|ANY|ARE|AREA|AREAS|ASCENDING|ASSIGN|AT|'
+                      r'AUTHOR|BEFORE|BINARY|BLANK|BLOCK|BOTTOM|BY|CALL|CANCEL|CD|CF|CH|'
+                      r'CHARACTER|CHARACTERS|CLASS|CLOCK-UNITS|CLOSE|COBOL|CODE|CODE-SET|'
+                      r'COLLATING|COLUMN|COMMA|COMMON|COMMUNICATION|COMP|COMPUTE|'
+                      r'COMPUTATIONAL|CONFIGURATION|CONTAINS|CONTENT|CONTINUE|CONTROL|'
+                      r'CONTROLS|CONVERTING|COPY|CORR|CORRESPONDING|COUNT|CURRENCY|DATE|'
+                      r'DATE-COMPILED|DATE-WRITTEN|DAY|DAY-OF-WEEK|DE|DEBUG-CONTENTS|'
+                      r'DEBUG-ITEM|DEBUG-LINE|DEBUG-NAME|DEBUG-SUB-1|DEBUG-SUB-2|'
+                      r'DEBUG-SUB-3|DEBUGGING|DECIMAL-POINT|DECLARATIVES|DELETE|DELIMITED|'
+                      r'DELIMITER|DEPENDING|DESCENDING|DESTINATION|DETAIL|DISABLE|DISPLAY|'
+                      r'DIVIDE|DOWN|DUPLICATES|DYNAMIC|EGI|ELSE|EMI|ENABLE|END|END-ADD|'
+                      r'END-CALL|END-COMPUTE|END-DELETE|END-DIVIDE|END-EVALUATE|END-IF|'
+                      r'END-MULTIPLY|END-OF-PAGE|END-PERFORM|END-READ|END-RECEIVE|'
+                      r'END-RETURN|END-REWRITE|END-SEARCH|END-START|END-STRING|END-SUBTRACT|'
+                      r'END-UNSTRING|END-WRITE|ENTER|ENTRY|ENVIRONMENT|EOP|EQUAL|ERROR|ESI|'
+                      r'EVALUATE|EVERY|EXCEPTION|EXIT|EXTEND|EXTERNAL|FALSE|FD|FILE|'
+                      r'FILE-CONTROL|FILLER|FINAL|FIRST|FOOTING|FOR|FROM|FUNCTION|GENERATE|'
+                      r'GIVING|GLOBAL|GO|GOBACK|GREATER|GROUP|HEADING|HIGH-VALUE|HIGH-VALUES|'
+                      r'I-O|I-O-CONTROL|IF|IN|INDEX|INDEXED|INDICATE|INITIAL|INITIALIZE|'
+                      r'INITIATE|INPUT|INPUT-OUTPUT|INSPECT|INSTALLATION|INTO|INVALID|IS|'
+                      r'JUST|JUSTIFIED|KEY|LABEL|LAST|LEADING|LEFT|LENGTH|LESS|LIMIT|LIMITS|'
+                      r'LINAGE|LINAGE-COUNTER|LINE|LINE-COUNTER|LINES|LINKAGE|LOCK|'
+                      r'LOW-VALUE|LOW-VALUES|MEMORY|MERGE|MESSAGE|MODE|MODULES|MOVE|MULTIPLE|'
+                      r'MULTIPLY|NATIVE|NEGATIVE|NEXT|NO|NOT|NUMBER|NUMERIC|NUMERIC-EDITED|'
+                      r'OBJECT-COMPUTER|OCCURS|OF|OFF|OMITTED|ON|OPEN|OPTIONAL|OR|ORDER|'
+                      r'ORGANIZATION|OTHER|OUTPUT|OVERFLOW|PACKED-DECIMAL|PADDING|PAGE|'
+                      r'PAGE-COUNTER|PERFORM|PF|PH|PICTURE|PIC|PLUS|POINTER|POSITION|POSITIVE|'
+                      r'PRINTING|PROCEDURE|PROCEDURES|PROCEED|PROGRAM|PROGRAM-ID|PURGE|QUEUE|'
+                      r'QUOTE|QUOTES|RANDOM|RD|READ|RECEIVE|RECORD|RECORDS|REDEFINES|REEL|'
+                      r'REFERENCE|REFERENCES|RELATIVE|RELEASE|REMAINDER|REMOVAL|RENAMES|'
+                      r'REPLACE|REPLACING|REPORT|REPORTING|REPORTS|RERUN|RESERVE|RESET|'
+                      r'RETURN|REVERSED|REWIND|REWRITE|RF|RH|RIGHT|ROUNDED|RUN|SAME|SD|'
+                      r'SEARCH|SECTION|SECURITY|SEGMENT|SEGMENT-LIMIT|SELECT|SEND|SENTENCE|'
+                      r'SEPARATE|SEQUENCE|SEQUENTIAL|SET|SIGN|SIZE|SORT|SORT-MERGE|SOURCE|'
+                      r'SOURCE-COMPUTER|SPACE|SPACES|SPECIAL-NAMES|STANDARD|STANDARD-1|'
+                      r'STANDARD-2|START|STATUS|STOP|STRING|SUB-QUEUE-1|SUB-QUEUE-2|'
+                      r'SUB-QUEUE-3|SUBTRACT|SUM|SUPPRESS|SYMBOLIC|SYNC|SYNCHRONIZED|TABLE|'
+                      r'TALLYING|TAPE|TERMINAL|TERMINATE|TEST|TEXT|THAN|THEN|THROUGH|THRU|'
+                      r'TIME|TIMES|TO|TOP|TRAILING|TRUE|TYPE|UNIT|UNSTRING|UNTIL|UP|UPON|'
+                      r'USAGE|USE|USING|VALUE|VALUES|VARYING|WHEN|WITH|WORDS|'
+                      r'WORKING-STORAGE|WRITE|ZERO|ZEROES|ZEROS)\b',
+            'datatype': r'\bPIC\s+[X9A\(\)V\-\+\*\$\,\.ZS]+\b',
+            'comment': r'^\s*\*.*$',
+            'string': r'["\']([^"\']*)["\']',
+            'number': r'\b\d+(\.\d+)?\b'
+        }
+
+    def highlight_syntax(self):
+        """Apply syntax highlighting to the entire text"""
+        # Remove all existing tags
+        for tag in ['keyword', 'datatype', 'string', 'comment', 'number', 'division', 'section']:
+            self.text_area.tag_remove(tag, '1.0', 'end')
+
+        content = self.text_area.get('1.0', 'end')
+        patterns = self.get_cobol_patterns()
+
+        # Apply syntax highlighting for each pattern type
+        for tag_name, pattern in patterns.items():
+            for match in re.finditer(pattern, content, re.MULTILINE | re.IGNORECASE):
+                start_index = f"1.0 + {match.start()} chars"
+                end_index = f"1.0 + {match.end()} chars"
+                self.text_area.tag_add(tag_name, start_index, end_index)
+
+        # Update line numbers
+        self.update_line_numbers()
+
+    def update_line_numbers(self):
+        """Update line numbers display"""
+        self.line_numbers.config(state='normal')
+        self.line_numbers.delete('1.0', 'end')
+
+        line_count = int(self.text_area.index('end-1c').split('.')[0])
+        line_numbers_string = "\n".join(str(i) for i in range(1, line_count + 1))
+        self.line_numbers.insert('1.0', line_numbers_string)
+        self.line_numbers.config(state='disabled')
+
+    def on_key_release(self, event=None):
+        """Handle key release events for syntax highlighting"""
+        self.highlight_syntax()
+
+    def new_file(self):
         """Create a new file"""
-        if self.text_area.text:
-            popup = Popup(title='New File',
-                         content=Label(text='Discard current changes?'),
-                         size_hint=(0.6, 0.3))
-
-            button_layout = BoxLayout()
-            yes_btn = Button(text='Yes')
-            yes_btn.bind(on_press=lambda x: self._do_new_file(popup))
-            no_btn = Button(text='No')
-            no_btn.bind(on_press=popup.dismiss)
-            button_layout.add_widget(yes_btn)
-            button_layout.add_widget(no_btn)
-
-            popup.content = BoxLayout(orientation='vertical')
-            popup.content.add_widget(Label(text='Discard current changes?'))
-            popup.content.add_widget(button_layout)
-            popup.open()
+        if self.text_area.get('1.0', 'end-1c'):
+            if messagebox.askyesno("New File", "Discard current changes?"):
+                self.text_area.delete('1.0', 'end')
+                self.current_file = None
+                self.root.title("COBOL Editor - New File")
         else:
-            self._do_new_file(None)
+            self.text_area.delete('1.0', 'end')
+            self.current_file = None
+            self.root.title("COBOL Editor - New File")
 
-    def _do_new_file(self, popup):
-        """Actually create new file"""
-        if popup:
-            popup.dismiss()
-        self.text_area.text = ''
-        self.current_file = None
-        Window.set_title('COBOL Editor - New File')
-
-    def open_file(self, instance):
+    def open_file(self):
         """Open a file"""
-        content = BoxLayout(orientation='vertical')
-        file_chooser = FileChooserListView(filters=['*.cbl', '*.cob', '*.cobol', '*.*'])
-        content.add_widget(file_chooser)
+        file_path = filedialog.askopenfilename(
+            defaultextension=".cbl",
+            filetypes=[("COBOL Files", "*.cbl *.cob *.cobol"), ("All Files", "*.*")]
+        )
 
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        open_btn = Button(text='Open')
-        cancel_btn = Button(text='Cancel')
-        button_layout.add_widget(open_btn)
-        button_layout.add_widget(cancel_btn)
-        content.add_widget(button_layout)
+        if file_path:
+            try:
+                with open(file_path, 'r') as file:
+                    content = file.read()
+                    self.text_area.delete('1.0', 'end')
+                    self.text_area.insert('1.0', content)
+                    self.current_file = file_path
+                    self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                    self.highlight_syntax()
+                    self.status_bar.config(text=f"Opened: {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
-        popup = Popup(title='Open File', content=content, size_hint=(0.9, 0.9))
-
-        def do_open(instance):
-            if file_chooser.selection:
-                self._load_file(file_chooser.selection[0])
-                popup.dismiss()
-
-        open_btn.bind(on_press=do_open)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def _load_file(self, file_path):
-        """Load a file into the editor"""
-        try:
-            with open(file_path, 'r') as file:
-                content = file.read()
-                self.text_area.text = content
-                self.current_file = file_path
-                Window.set_title(f'COBOL Editor - {os.path.basename(file_path)}')
-                self.status_bar.text = f'Opened: {file_path}'
-        except Exception as e:
-            self._show_error('Error', f'Failed to open file:\n{str(e)}')
-
-    def save_file(self, instance):
+    def save_file(self):
         """Save the current file"""
         if self.current_file:
             try:
+                content = self.text_area.get('1.0', 'end-1c')
                 with open(self.current_file, 'w') as file:
-                    file.write(self.text_area.text)
-                self.status_bar.text = f'Saved: {self.current_file}'
+                    file.write(content)
+                self.status_bar.config(text=f"Saved: {self.current_file}")
             except Exception as e:
-                self._show_error('Error', f'Failed to save file:\n{str(e)}')
+                messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
         else:
-            self.save_as_file(instance)
+            self.save_as_file()
 
-    def save_as_file(self, instance):
+    def save_as_file(self):
         """Save the file with a new name"""
-        content = BoxLayout(orientation='vertical')
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".cbl",
+            filetypes=[("COBOL Files", "*.cbl"), ("All Files", "*.*")]
+        )
 
-        file_chooser = FileChooserListView(filters=['*.cbl', '*.cob', '*.cobol'])
-        content.add_widget(file_chooser)
+        if file_path:
+            try:
+                content = self.text_area.get('1.0', 'end-1c')
+                with open(file_path, 'w') as file:
+                    file.write(content)
+                self.current_file = file_path
+                self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                self.status_bar.config(text=f"Saved as: {file_path}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
 
-        filename_input = TextInput(hint_text='Enter filename', size_hint_y=None, height=40, multiline=False)
-        content.add_widget(filename_input)
-
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        save_btn = Button(text='Save')
-        cancel_btn = Button(text='Cancel')
-        button_layout.add_widget(save_btn)
-        button_layout.add_widget(cancel_btn)
-        content.add_widget(button_layout)
-
-        popup = Popup(title='Save As', content=content, size_hint=(0.9, 0.9))
-
-        def do_save(instance):
-            if filename_input.text:
-                path = file_chooser.path
-                file_path = os.path.join(path, filename_input.text)
-                if not file_path.endswith(('.cbl', '.cob', '.cobol')):
-                    file_path += '.cbl'
-                try:
-                    with open(file_path, 'w') as file:
-                        file.write(self.text_area.text)
-                    self.current_file = file_path
-                    Window.set_title(f'COBOL Editor - {os.path.basename(file_path)}')
-                    self.status_bar.text = f'Saved as: {file_path}'
-                    popup.dismiss()
-                except Exception as e:
-                    self._show_error('Error', f'Failed to save file:\n{str(e)}')
-
-        save_btn.bind(on_press=do_save)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def find_text(self, instance):
+    def find_text(self):
         """Open find dialog"""
-        content = BoxLayout(orientation='vertical')
-        search_input = TextInput(hint_text='Enter text to find', size_hint_y=None, height=40, multiline=False)
-        content.add_widget(search_input)
+        self.search_text = simpledialog.askstring("Find", "Enter text to find:")
+        if self.search_text:
+            self.search_index = "1.0"
+            self.find_next()
 
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        find_btn = Button(text='Find')
-        cancel_btn = Button(text='Cancel')
-        button_layout.add_widget(find_btn)
-        button_layout.add_widget(cancel_btn)
-        content.add_widget(button_layout)
-
-        popup = Popup(title='Find', content=content, size_hint=(0.6, 0.3))
-
-        def do_find(instance):
-            self.search_text = search_input.text
-            if self.search_text:
-                self.search_index = 0
-                self.find_next(None)
-                popup.dismiss()
-
-        find_btn.bind(on_press=do_find)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def find_next(self, instance):
+    def find_next(self):
         """Find next occurrence of search text"""
-        if not self.search_text:
-            self.find_text(instance)
+        if not hasattr(self, 'search_text') or not self.search_text:
+            self.find_text()
             return
 
-        text = self.text_area.text.lower()
-        search_text = self.search_text.lower()
+        # Remove previous search highlights
+        self.text_area.tag_remove('search', '1.0', 'end')
 
-        pos = text.find(search_text, self.search_index)
+        # Search for text
+        pos = self.text_area.search(self.search_text, self.search_index,
+                                     stopindex='end', nocase=True)
 
-        if pos >= 0:
-            self.text_area.select_text(pos, pos + len(search_text))
-            self.search_index = pos + len(search_text)
-            self.status_bar.text = f'Found: {self.search_text} at position {pos}'
+        if pos:
+            # Highlight found text
+            end_pos = f"{pos}+{len(self.search_text)}c"
+            self.text_area.tag_add('search', pos, end_pos)
+            self.text_area.see(pos)
+            self.text_area.mark_set('insert', pos)
+            self.search_index = end_pos
+            self.status_bar.config(text=f"Found: {self.search_text} at {pos}")
         else:
-            # Wrap around
-            pos = text.find(search_text, 0)
-            if pos >= 0:
-                self.text_area.select_text(pos, pos + len(search_text))
-                self.search_index = pos + len(search_text)
-                self.status_bar.text = f'Found: {self.search_text} at position {pos} (wrapped)'
+            # Wrap around to beginning
+            self.search_index = "1.0"
+            pos = self.text_area.search(self.search_text, self.search_index,
+                                        stopindex='end', nocase=True)
+            if pos:
+                end_pos = f"{pos}+{len(self.search_text)}c"
+                self.text_area.tag_add('search', pos, end_pos)
+                self.text_area.see(pos)
+                self.text_area.mark_set('insert', pos)
+                self.search_index = end_pos
+                self.status_bar.config(text=f"Found: {self.search_text} at {pos} (wrapped)")
             else:
-                self._show_info('Find', f"Text '{self.search_text}' not found")
+                messagebox.showinfo("Find", f"Text '{self.search_text}' not found")
 
-    def find_in_files(self, instance):
+    def select_all(self):
+        """Select all text"""
+        self.text_area.tag_add('sel', '1.0', 'end')
+
+    def show_about(self):
+        """Show about dialog"""
+        messagebox.showinfo("About",
+                           "COBOL Editor\n\n"
+                           "A COBOL editor with syntax highlighting, search,\n"
+                           "multi-file search, and adjustable font size.\n\n"
+                           "Shortcuts:\n"
+                           "Ctrl+N - New File\n"
+                           "Ctrl+O - Open File\n"
+                           "Ctrl+S - Save File\n"
+                           "Ctrl+F - Find\n"
+                           "F3 - Find Next\n"
+                           "Ctrl+Shift+F - Find in Files\n"
+                           "Ctrl++ - Increase Font Size\n"
+                           "Ctrl+- - Decrease Font Size")
+
+    def handle_increase_font(self, event=None):
+        """Handle increase font size event"""
+        print(f"DEBUG: Increase font called, current size: {self.font_size}")
+        self.increase_font_size()
+        print(f"DEBUG: New font size: {self.font_size}")
+        return "break"
+
+    def handle_decrease_font(self, event=None):
+        """Handle decrease font size event"""
+        print(f"DEBUG: Decrease font called, current size: {self.font_size}")
+        self.decrease_font_size()
+        print(f"DEBUG: New font size: {self.font_size}")
+        return "break"
+
+    def increase_font_size(self):
+        """Increase font size"""
+        if self.font_size < 72:  # Maximum font size
+            self.font_size += 2
+            self.update_font()
+            self.status_bar.config(text=f"Font size: {self.font_size}")
+
+    def decrease_font_size(self):
+        """Decrease font size"""
+        if self.font_size > 6:  # Minimum font size
+            self.font_size -= 2
+            self.update_font()
+            self.status_bar.config(text=f"Font size: {self.font_size}")
+
+    def reset_font_size(self):
+        """Reset font size to default"""
+        self.font_size = 18
+        self.update_font()
+        self.status_bar.config(text=f"Font size reset to: {self.font_size}")
+
+    def update_font(self):
+        """Update font for all text widgets"""
+        # Update main text area font
+        self.text_area.config(font=(self.font_family, self.font_size))
+        # Update line numbers font
+        self.line_numbers.config(font=(self.font_family, self.font_size))
+        # Reconfigure tags with new font size
+        self.configure_tags()
+        # Reapply syntax highlighting
+        self.highlight_syntax()
+
+    def apply_theme(self, theme_name):
+        """Apply a color theme to the editor"""
+        if theme_name not in self.themes:
+            messagebox.showerror("Error", f"Theme '{theme_name}' not found")
+            return
+
+        self.current_theme = theme_name
+        theme = self.themes[theme_name]
+
+        # Update text area colors
+        self.text_area.config(
+            background=theme['bg'],
+            foreground=theme['fg'],
+            insertbackground=theme['fg']
+        )
+
+        # Update line numbers colors
+        self.line_numbers.config(
+            background=theme['line_numbers_bg'],
+            foreground=theme['line_numbers_fg']
+        )
+
+        # Update tree frame colors
+        self.tree_frame.config(bg=theme['line_numbers_bg'])
+        self.tree_label.config(
+            bg=theme['line_numbers_bg'],
+            fg=theme['line_numbers_fg']
+        )
+
+        # Update menu colors to match the new theme
+        self.configure_menu_colors()
+
+        # Update ttk widget colors to match the new theme
+        self.configure_ttk_colors()
+
+        # Reconfigure tags with new theme colors
+        self.configure_tags()
+
+        # Reapply syntax highlighting to update colors
+        self.highlight_syntax()
+
+        # Update status bar
+        self.status_bar.config(text=f"Theme changed to: {theme_name}")
+
+    def apply_ttk_theme(self, theme_name):
+        """Apply a ttk theme to the editor widgets"""
+        try:
+            self.style.theme_use(theme_name)
+            self.current_ttk_theme = theme_name
+
+            # Configure ttk widget colors to match the current color theme
+            self.configure_ttk_colors()
+
+            self.status_bar.config(text=f"TTK Theme changed to: {theme_name}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to apply TTK theme '{theme_name}':\n{str(e)}")
+
+    def configure_ttk_colors(self):
+        """Configure ttk widget colors to match the current color theme"""
+        theme = self.themes[self.current_theme]
+
+        # Configure Treeview colors
+        self.style.configure("Treeview",
+                            background=theme['bg'],
+                            foreground=theme['fg'],
+                            fieldbackground=theme['bg'])
+        self.style.map('Treeview',
+                      background=[('selected', theme['search_bg'])],
+                      foreground=[('selected', theme['search_fg'])])
+
+        # Configure Treeview heading
+        self.style.configure("Treeview.Heading",
+                            background=theme['line_numbers_bg'],
+                            foreground=theme['line_numbers_fg'])
+
+        # Configure Scrollbar colors
+        self.style.configure("Vertical.TScrollbar",
+                            background=theme['line_numbers_bg'],
+                            troughcolor=theme['bg'],
+                            bordercolor=theme['line_numbers_bg'],
+                            arrowcolor=theme['fg'])
+
+    def configure_menu_colors(self):
+        """Configure menu colors to match the current color theme"""
+        theme = self.themes[self.current_theme]
+
+        # List of all menus to configure
+        menus = [
+            self.menubar,
+            self.file_menu,
+            self.edit_menu,
+            self.view_menu,
+            self.theme_menu,
+            self.ttk_theme_menu,
+            self.help_menu
+        ]
+
+        # Configure colors for all menus
+        for menu in menus:
+            menu.config(
+                bg=theme['bg'],
+                fg=theme['fg'],
+                activebackground=theme['search_bg'],
+                activeforeground=theme['search_fg']
+            )
+
+    def find_in_files(self):
         """Open multi-file search dialog"""
-        content = BoxLayout(orientation='vertical')
+        # Ask for directory
+        directory = filedialog.askdirectory(title="Select directory to search in")
+        if not directory:
+            return
 
-        dir_label = Label(text='Select directory:', size_hint_y=None, height=30)
-        content.add_widget(dir_label)
+        # Ask for search text
+        search_text = simpledialog.askstring("Find in Files", "Enter text to find:")
+        if not search_text:
+            return
 
-        file_chooser = FileChooserListView(dirselect=True)
-        content.add_widget(file_chooser)
-
-        search_input = TextInput(hint_text='Enter text to find', size_hint_y=None, height=40, multiline=False)
-        content.add_widget(search_input)
-
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        search_btn = Button(text='Search')
-        cancel_btn = Button(text='Cancel')
-        button_layout.add_widget(search_btn)
-        button_layout.add_widget(cancel_btn)
-        content.add_widget(button_layout)
-
-        popup = Popup(title='Find in Files', content=content, size_hint=(0.9, 0.9))
-
-        def do_search(instance):
-            directory = file_chooser.path
-            search_text = search_input.text
-            if directory and search_text:
-                results = self._search_in_files(directory, search_text)
-                if results:
-                    popup.dismiss()
-                    self._show_search_results(search_text, results)
-                else:
-                    self._show_info('Find in Files', f"No matches found for '{search_text}'")
-
-        search_btn.bind(on_press=do_search)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def _search_in_files(self, directory, search_text):
-        """Search for text in COBOL files"""
+        # Search in files
         results = []
         for root, dirs, files in os.walk(directory):
             for file in files:
@@ -489,224 +643,168 @@ class CobolEditor(BoxLayout):
                             for line_num, line in enumerate(f, 1):
                                 if search_text.lower() in line.lower():
                                     results.append((file_path, line_num, line.strip()))
-                    except:
+                    except Exception as e:
                         continue
-        return results
 
-    def _show_search_results(self, search_text, results):
-        """Show search results in a popup"""
-        content = BoxLayout(orientation='vertical')
+        # Display results
+        if results:
+            self.show_search_results(search_text, results)
+        else:
+            messagebox.showinfo("Find in Files", f"No matches found for '{search_text}'")
 
-        results_text = '\n'.join([f'{fp}:{ln}: {txt}' for fp, ln, txt in results[:100]])
-        results_label = Label(text=f'Found {len(results)} matches:\n\n{results_text}',
-                            halign='left', valign='top')
-        results_label.bind(size=lambda *x: setattr(results_label, 'text_size', results_label.size))
+    def show_search_results(self, search_text, results):
+        """Show search results in a new window"""
+        results_window = tk.Toplevel(self.root)
+        results_window.title(f"Search Results: '{search_text}' ({len(results)} matches)")
+        results_window.geometry("800x500")
 
-        scroll = ScrollView()
-        scroll.add_widget(results_label)
-        content.add_widget(scroll)
+        # Create frame for results
+        frame = tk.Frame(results_window)
+        frame.pack(fill=tk.BOTH, expand=True)
 
-        close_btn = Button(text='Close', size_hint_y=None, height=50)
-        content.add_widget(close_btn)
+        # Add scrollbar
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        popup = Popup(title=f"Search Results: '{search_text}'", content=content, size_hint=(0.9, 0.9))
-        close_btn.bind(on_press=popup.dismiss)
-        popup.open()
+        # Create listbox for results
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=(self.font_family, 10))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
 
-    def select_all(self, instance):
-        """Select all text"""
-        self.text_area.select_all()
+        # Add results to listbox
+        for file_path, line_num, line_text in results:
+            display_text = f"{file_path}:{line_num}: {line_text}"
+            listbox.insert(tk.END, display_text)
 
-    def show_about(self, instance):
-        """Show about dialog"""
-        about_text = ("COBOL Editor (Kivy Version)\n\n"
-                     "A COBOL editor with syntax highlighting, search,\n"
-                     "multi-file search, and adjustable font size.\n\n"
-                     "Shortcuts:\n"
-                     "Ctrl+N - New File\n"
-                     "Ctrl+O - Open File\n"
-                     "Ctrl+S - Save File\n"
-                     "Ctrl+F - Find\n"
-                     "F3 - Find Next\n"
-                     "Ctrl++ - Increase Font Size\n"
-                     "Ctrl+- - Decrease Font Size")
-        self._show_info('About', about_text)
+        # Bind double-click to open file
+        def on_double_click(event):
+            selection = listbox.curselection()
+            if selection:
+                index = selection[0]
+                file_path, line_num, _ = results[index]
+                self.open_file_at_line(file_path, line_num)
+                results_window.destroy()
 
-    def increase_font_size(self, instance):
-        """Increase font size"""
-        if self.font_size < 72:
-            self.font_size += 2
-            self.update_font()
-            self.status_bar.text = f'Font size: {self.font_size}'
+        listbox.bind('<Double-Button-1>', on_double_click)
 
-    def decrease_font_size(self, instance):
-        """Decrease font size"""
-        if self.font_size > 6:
-            self.font_size -= 2
-            self.update_font()
-            self.status_bar.text = f'Font size: {self.font_size}'
+        # Add status label
+        status_label = tk.Label(results_window, text=f"Found {len(results)} matches. Double-click to open file.",
+                               anchor=tk.W)
+        status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
-    def reset_font_size(self, instance):
-        """Reset font size to default"""
-        self.font_size = 18
-        self.update_font()
-        self.status_bar.text = f'Font size reset to: {self.font_size}'
+    def open_file_at_line(self, file_path, line_num):
+        """Open a file and jump to specific line"""
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+                self.text_area.delete('1.0', 'end')
+                self.text_area.insert('1.0', content)
+                self.current_file = file_path
+                self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                self.highlight_syntax()
 
-    def update_font(self):
-        """Update font for all text widgets"""
-        self.text_area.font_size = self.font_size
-        self.line_numbers.font_size = self.font_size
+                # Jump to line
+                self.text_area.mark_set('insert', f"{line_num}.0")
+                self.text_area.see(f"{line_num}.0")
 
-    def apply_theme(self, theme_name):
-        """Apply a color theme to the editor"""
-        if theme_name not in self.themes:
-            self._show_error('Error', f"Theme '{theme_name}' not found")
-            return
+                self.status_bar.config(text=f"Opened: {file_path} at line {line_num}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
-        self.current_theme = theme_name
-        theme = self.themes[theme_name]
-
-        # Update text area colors
-        self.text_area.background_color = theme['bg']
-        self.text_area.foreground_color = theme['fg']
-        self.text_area.cursor_color = theme['fg']
-
-        # Update line numbers colors
-        with self.line_numbers.canvas.before:
-            Color(*theme['line_numbers_bg'])
-            Rectangle(pos=self.line_numbers.pos, size=self.line_numbers.size)
-        self.line_numbers.color = theme['line_numbers_fg']
-
-        # Update status bar
-        self.status_bar.text = f'Theme changed to: {theme_name}'
-
-    def select_working_directory(self, instance):
+    def select_working_directory(self):
         """Select a working directory to browse"""
-        content = BoxLayout(orientation='vertical')
-        file_chooser = FileChooserListView(dirselect=True)
-        content.add_widget(file_chooser)
-
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        select_btn = Button(text='Select')
-        cancel_btn = Button(text='Cancel')
-        button_layout.add_widget(select_btn)
-        button_layout.add_widget(cancel_btn)
-        content.add_widget(button_layout)
-
-        popup = Popup(title='Select Working Directory', content=content, size_hint=(0.9, 0.9))
-
-        def do_select(instance):
-            self.working_directory = file_chooser.path
+        directory = filedialog.askdirectory(title="Select Working Directory")
+        if directory:
+            self.working_directory = directory
             self.populate_tree()
-            self.status_bar.text = f'Working directory: {self.working_directory}'
-            popup.dismiss()
-
-        select_btn.bind(on_press=do_select)
-        cancel_btn.bind(on_press=popup.dismiss)
-        popup.open()
+            self.status_bar.config(text=f"Working directory: {directory}")
 
     def populate_tree(self):
         """Populate the tree view with files and directories"""
-        self.file_tree.clear_widgets()
+        # Clear existing items
+        self.file_tree.delete(*self.file_tree.get_children())
 
         if not self.working_directory or not os.path.exists(self.working_directory):
             return
 
+        # Add root directory
         root_name = os.path.basename(self.working_directory) or self.working_directory
-        root_node = self.file_tree.add_node(TreeViewLabel(text=f'📁 {root_name}',
-                                                          is_open=True))
+        root_node = self.file_tree.insert('', 'end', text=root_name,
+                                          values=[self.working_directory], open=True)
 
-        self._add_tree_nodes(root_node, self.working_directory)
+        # Populate tree recursively
+        self.add_tree_nodes(root_node, self.working_directory)
 
-    def _add_tree_nodes(self, parent, path):
+    def add_tree_nodes(self, parent, path):
         """Recursively add nodes to the tree"""
         try:
             items = os.listdir(path)
+            # Sort: directories first, then files
             items.sort(key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
 
             for item in items:
+                # Skip hidden files and directories
                 if item.startswith('.'):
                     continue
 
                 full_path = os.path.join(path, item)
 
                 if os.path.isdir(full_path):
-                    node = TreeViewLabel(text=f'📁 {item}')
-                    node.full_path = full_path
-                    self.file_tree.add_node(node, parent)
-                    self._add_tree_nodes(node, full_path)
+                    # Add directory
+                    node = self.file_tree.insert(parent, 'end', text=f"📁 {item}",
+                                                values=[full_path])
+                    # Add subdirectories and files
+                    self.add_tree_nodes(node, full_path)
                 else:
+                    # Add file with appropriate icon
                     if item.endswith(('.cbl', '.cob', '.cobol')):
                         icon = "📄"
                     else:
                         icon = "📋"
-                    node = TreeViewLabel(text=f'{icon} {item}')
-                    node.full_path = full_path
-                    node.bind(on_touch_down=self._on_tree_node_click)
-                    self.file_tree.add_node(node, parent)
+                    self.file_tree.insert(parent, 'end', text=f"{icon} {item}",
+                                        values=[full_path])
         except PermissionError:
+            # Skip directories we don't have permission to read
             pass
 
-    def _on_tree_node_click(self, instance, touch):
-        """Handle tree node click"""
-        if instance.collide_point(*touch.pos) and touch.is_double_tap:
-            if hasattr(instance, 'full_path') and os.path.isfile(instance.full_path):
-                self._load_file(instance.full_path)
+    def on_tree_double_click(self, event):
+        """Handle double-click on tree item"""
+        item = self.file_tree.selection()
+        if item:
+            values = self.file_tree.item(item[0], 'values')
+            if values:
+                file_path = values[0]
+                if os.path.isfile(file_path):
+                    # Open the file
+                    try:
+                        with open(file_path, 'r') as file:
+                            content = file.read()
+                            self.text_area.delete('1.0', 'end')
+                            self.text_area.insert('1.0', content)
+                            self.current_file = file_path
+                            self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                            self.highlight_syntax()
+                            self.status_bar.config(text=f"Opened: {file_path}")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
-    def exit_editor(self, instance):
+    def exit_editor(self):
         """Exit the editor"""
-        content = BoxLayout(orientation='vertical')
-        content.add_widget(Label(text='Are you sure you want to exit?'))
-
-        button_layout = BoxLayout(size_hint_y=None, height=50)
-        yes_btn = Button(text='Yes')
-        no_btn = Button(text='No')
-        button_layout.add_widget(yes_btn)
-        button_layout.add_widget(no_btn)
-        content.add_widget(button_layout)
-
-        popup = Popup(title='Exit', content=content, size_hint=(0.6, 0.3))
-
-        yes_btn.bind(on_press=lambda x: App.get_running_app().stop())
-        no_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def _show_error(self, title, message):
-        """Show error popup"""
-        content = BoxLayout(orientation='vertical')
-        content.add_widget(Label(text=message))
-        close_btn = Button(text='Close', size_hint_y=None, height=50)
-        content.add_widget(close_btn)
-
-        popup = Popup(title=title, content=content, size_hint=(0.7, 0.4))
-        close_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-    def _show_info(self, title, message):
-        """Show info popup"""
-        content = BoxLayout(orientation='vertical')
-        label = Label(text=message, halign='left', valign='top')
-        label.bind(size=lambda *x: setattr(label, 'text_size', label.size))
-        content.add_widget(label)
-        close_btn = Button(text='Close', size_hint_y=None, height=50)
-        content.add_widget(close_btn)
-
-        popup = Popup(title=title, content=content, size_hint=(0.7, 0.4))
-        close_btn.bind(on_press=popup.dismiss)
-        popup.open()
-
-
-class CobolEditorApp(App):
-    """Main Kivy application"""
-
-    def build(self):
-        self.title = 'COBOL Editor'
-        Window.size = (1200, 800)
-        return CobolEditor()
+        if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
+            self.root.quit()
 
 
 def main():
-    CobolEditorApp().run()
+    root = tk.Tk()
+    editor = CobolEditor(root)
+
+    # Bind F3 for Find Next
+    root.bind('<F3>', lambda e: editor.find_next())
+
+    # Bind Ctrl+Shift+F for Find in Files
+    root.bind('<Control-Shift-F>', lambda e: editor.find_in_files())
+
+    root.mainloop()
 
 
 if __name__ == "__main__":

@@ -155,6 +155,9 @@ class CobolEditor:
         # Configure tags for syntax highlighting
         self.configure_tags()
 
+        # Configure ttk widget colors to match the initial theme
+        self.configure_ttk_colors()
+
         # Status bar
         self.status_bar = tk.Label(root, text="Ready", anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
@@ -516,6 +519,9 @@ class CobolEditor:
             fg=theme['line_numbers_fg']
         )
 
+        # Update ttk widget colors to match the new theme
+        self.configure_ttk_colors()
+
         # Reconfigure tags with new theme colors
         self.configure_tags()
 
@@ -530,9 +536,38 @@ class CobolEditor:
         try:
             self.style.theme_use(theme_name)
             self.current_ttk_theme = theme_name
+
+            # Configure ttk widget colors to match the current color theme
+            self.configure_ttk_colors()
+
             self.status_bar.config(text=f"TTK Theme changed to: {theme_name}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to apply TTK theme '{theme_name}':\n{str(e)}")
+
+    def configure_ttk_colors(self):
+        """Configure ttk widget colors to match the current color theme"""
+        theme = self.themes[self.current_theme]
+
+        # Configure Treeview colors
+        self.style.configure("Treeview",
+                            background=theme['bg'],
+                            foreground=theme['fg'],
+                            fieldbackground=theme['bg'])
+        self.style.map('Treeview',
+                      background=[('selected', theme['search_bg'])],
+                      foreground=[('selected', theme['search_fg'])])
+
+        # Configure Treeview heading
+        self.style.configure("Treeview.Heading",
+                            background=theme['line_numbers_bg'],
+                            foreground=theme['line_numbers_fg'])
+
+        # Configure Scrollbar colors
+        self.style.configure("Vertical.TScrollbar",
+                            background=theme['line_numbers_bg'],
+                            troughcolor=theme['bg'],
+                            bordercolor=theme['line_numbers_bg'],
+                            arrowcolor=theme['fg'])
 
     def find_in_files(self):
         """Open multi-file search dialog"""

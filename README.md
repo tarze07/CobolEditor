@@ -1,11 +1,13 @@
 # COBOL Editor
 
-Edytor COBOL z podświetlaniem składni i funkcją wyszukiwania napisany w Pythonie.
+Edytor COBOL z podświetlaniem składni, wyszukiwaniem w wielu plikach i regulacją wielkości czcionki napisany w Pythonie.
 
 ## Funkcje
 
 - **Podświetlanie składni COBOL**: Automatyczne kolorowanie słów kluczowych, komentarzy, stringów, liczb i sekcji
 - **Wyszukiwanie tekstu**: Funkcja Find (Ctrl+F) z możliwością wyszukiwania kolejnych wystąpień (F3)
+- **Wyszukiwanie w wielu plikach**: Funkcja Find in Files (Ctrl+Shift+F) pozwala wyszukiwać w wielu plikach COBOL jednocześnie
+- **Regulacja wielkości czcionki**: Możliwość powiększania (Ctrl++) i pomniejszania (Ctrl+-) czcionki
 - **Numeracja linii**: Automatyczna numeracja linii po lewej stronie
 - **Operacje na plikach**: New, Open, Save, Save As
 - **Skróty klawiszowe**: Szybki dostęp do podstawowych funkcji
@@ -47,9 +49,15 @@ chmod +x cobol_editor.py
 - **Exit**: Zamknij edytor
 
 **Edit**
-- **Find (Ctrl+F)**: Wyszukaj tekst w pliku
+- **Find (Ctrl+F)**: Wyszukaj tekst w bieżącym pliku
 - **Find Next (F3)**: Znajdź następne wystąpienie
+- **Find in Files (Ctrl+Shift+F)**: Wyszukaj tekst w wielu plikach COBOL
 - **Select All (Ctrl+A)**: Zaznacz cały tekst
+
+**View**
+- **Increase Font Size (Ctrl++)**: Powiększ czcionkę
+- **Decrease Font Size (Ctrl+-)**: Pomniejsz czcionkę
+- **Reset Font Size**: Przywróć domyślny rozmiar czcionki
 
 **Help**
 - **About**: Informacje o programie
@@ -61,8 +69,11 @@ chmod +x cobol_editor.py
 | Ctrl+N | Nowy plik |
 | Ctrl+O | Otwórz plik |
 | Ctrl+S | Zapisz plik |
-| Ctrl+F | Wyszukaj |
+| Ctrl+F | Wyszukaj w pliku |
 | F3 | Znajdź następne |
+| Ctrl+Shift+F | Wyszukaj w wielu plikach |
+| Ctrl++ | Powiększ czcionkę |
+| Ctrl+- | Pomniejsz czcionkę |
 | Ctrl+A | Zaznacz wszystko |
 
 ### Podświetlanie składni
@@ -78,11 +89,28 @@ Edytor rozpoznaje i koloruje:
 
 ### Wyszukiwanie
 
+**Wyszukiwanie w bieżącym pliku:**
 1. Naciśnij **Ctrl+F** lub wybierz **Edit > Find**
 2. Wpisz szukany tekst w oknie dialogowym
 3. Naciśnij **F3** lub wybierz **Edit > Find Next**, aby znaleźć kolejne wystąpienia
 4. Wyszukiwanie nie rozróżnia wielkości liter
 5. Po dotarciu do końca pliku wyszukiwanie zaczyna się od początku
+
+**Wyszukiwanie w wielu plikach:**
+1. Naciśnij **Ctrl+Shift+F** lub wybierz **Edit > Find in Files**
+2. Wybierz katalog, w którym chcesz wyszukać
+3. Wpisz szukany tekst w oknie dialogowym
+4. Wyniki pojawią się w nowym oknie z listą wszystkich dopasowań
+5. Kliknij dwukrotnie na wynik, aby otworzyć plik i przejść do odpowiedniej linii
+6. Wyszukiwanie dotyczy plików z rozszerzeniami: .cbl, .cob, .cobol
+
+### Regulacja wielkości czcionki
+
+1. **Powiększanie**: Naciśnij **Ctrl++** lub wybierz **View > Increase Font Size**
+2. **Pomniejszanie**: Naciśnij **Ctrl+-** lub wybierz **View > Decrease Font Size**
+3. **Reset**: Wybierz **View > Reset Font Size**, aby przywrócić domyślny rozmiar (11)
+4. Zakres wielkości czcionki: 6-72 punktów
+5. Zmiana wielkości czcionki aktualizuje podświetlanie składni
 
 ## Przykładowy plik COBOL
 

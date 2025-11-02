@@ -19,13 +19,80 @@ class CobolEditor:
         self.search_index = "1.0"
         self.font_size = 11  # Default font size
         self.font_family = 'Courier New'
+        self.current_theme = 'Light'  # Default theme
+
+        # Define color themes
+        self.themes = {
+            'Light': {
+                'bg': '#FFFFFF',
+                'fg': '#000000',
+                'line_numbers_bg': '#E0E0E0',
+                'line_numbers_fg': '#555555',
+                'keyword': '#0000FF',
+                'datatype': '#008080',
+                'string': '#A31515',
+                'comment': '#008000',
+                'number': '#098658',
+                'division': '#AF00DB',
+                'section': '#AF00DB',
+                'search_bg': '#FFFF00',
+                'search_fg': '#000000'
+            },
+            'Dark': {
+                'bg': '#1E1E1E',
+                'fg': '#D4D4D4',
+                'line_numbers_bg': '#252526',
+                'line_numbers_fg': '#858585',
+                'keyword': '#569CD6',
+                'datatype': '#4EC9B0',
+                'string': '#CE9178',
+                'comment': '#6A9955',
+                'number': '#B5CEA8',
+                'division': '#C586C0',
+                'section': '#C586C0',
+                'search_bg': '#515C6A',
+                'search_fg': '#FFFFFF'
+            },
+            'High Contrast': {
+                'bg': '#000000',
+                'fg': '#FFFFFF',
+                'line_numbers_bg': '#1E1E1E',
+                'line_numbers_fg': '#FFFFFF',
+                'keyword': '#00FFFF',
+                'datatype': '#00FF00',
+                'string': '#FF00FF',
+                'comment': '#7FFF00',
+                'number': '#FFFF00',
+                'division': '#FF8800',
+                'section': '#FF8800',
+                'search_bg': '#FFFF00',
+                'search_fg': '#000000'
+            },
+            'Monokai': {
+                'bg': '#272822',
+                'fg': '#F8F8F2',
+                'line_numbers_bg': '#3E3D32',
+                'line_numbers_fg': '#90908A',
+                'keyword': '#F92672',
+                'datatype': '#66D9EF',
+                'string': '#E6DB74',
+                'comment': '#75715E',
+                'number': '#AE81FF',
+                'division': '#A6E22E',
+                'section': '#A6E22E',
+                'search_bg': '#49483E',
+                'search_fg': '#FFFFFF'
+            }
+        }
 
         # Create menu bar
         self.create_menu()
 
         # Create line numbers
+        theme = self.themes[self.current_theme]
         self.line_numbers = tk.Text(root, width=4, padx=3, takefocus=0,
-                                     border=0, background='lightgray',
+                                     border=0, background=theme['line_numbers_bg'],
+                                     foreground=theme['line_numbers_fg'],
                                      state='disabled', wrap='none',
                                      font=(self.font_family, self.font_size))
         self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
@@ -37,7 +104,10 @@ class CobolEditor:
         # Create text widget
         self.text_area = tk.Text(root, wrap=tk.NONE, undo=True,
                                   yscrollcommand=scrollbar.set,
-                                  font=(self.font_family, self.font_size))
+                                  font=(self.font_family, self.font_size),
+                                  background=theme['bg'],
+                                  foreground=theme['fg'],
+                                  insertbackground=theme['fg'])
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.text_area.yview)
 
@@ -84,6 +154,16 @@ class CobolEditor:
         # View menu
         view_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="View", menu=view_menu)
+
+        # Theme submenu
+        theme_menu = tk.Menu(view_menu, tearoff=0)
+        view_menu.add_cascade(label="Theme", menu=theme_menu)
+        theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
+        theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
+        theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
+        theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
+
+        view_menu.add_separator()
         view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
         view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
         view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
@@ -95,22 +175,30 @@ class CobolEditor:
 
     def configure_tags(self):
         """Configure text tags for COBOL syntax highlighting"""
+        theme = self.themes[self.current_theme]
+
         # Keywords
-        self.text_area.tag_config('keyword', foreground='#0000FF', font=(self.font_family, self.font_size, 'bold'))
+        self.text_area.tag_config('keyword', foreground=theme['keyword'],
+                                  font=(self.font_family, self.font_size, 'bold'))
         # Data types
-        self.text_area.tag_config('datatype', foreground='#008080', font=(self.font_family, self.font_size, 'bold'))
+        self.text_area.tag_config('datatype', foreground=theme['datatype'],
+                                  font=(self.font_family, self.font_size, 'bold'))
         # Strings
-        self.text_area.tag_config('string', foreground='#A31515')
+        self.text_area.tag_config('string', foreground=theme['string'])
         # Comments
-        self.text_area.tag_config('comment', foreground='#008000', font=(self.font_family, self.font_size, 'italic'))
+        self.text_area.tag_config('comment', foreground=theme['comment'],
+                                  font=(self.font_family, self.font_size, 'italic'))
         # Numbers
-        self.text_area.tag_config('number', foreground='#098658')
+        self.text_area.tag_config('number', foreground=theme['number'])
         # Division headers
-        self.text_area.tag_config('division', foreground='#AF00DB', font=(self.font_family, self.font_size, 'bold'))
+        self.text_area.tag_config('division', foreground=theme['division'],
+                                  font=(self.font_family, self.font_size, 'bold'))
         # Section headers
-        self.text_area.tag_config('section', foreground='#AF00DB', font=(self.font_family, self.font_size))
+        self.text_area.tag_config('section', foreground=theme['section'],
+                                  font=(self.font_family, self.font_size))
         # Search highlight
-        self.text_area.tag_config('search', background='yellow')
+        self.text_area.tag_config('search', background=theme['search_bg'],
+                                  foreground=theme['search_fg'])
 
     def get_cobol_patterns(self):
         """Return regex patterns for COBOL syntax"""
@@ -355,6 +443,37 @@ class CobolEditor:
         self.configure_tags()
         # Reapply syntax highlighting
         self.highlight_syntax()
+
+    def apply_theme(self, theme_name):
+        """Apply a color theme to the editor"""
+        if theme_name not in self.themes:
+            messagebox.showerror("Error", f"Theme '{theme_name}' not found")
+            return
+
+        self.current_theme = theme_name
+        theme = self.themes[theme_name]
+
+        # Update text area colors
+        self.text_area.config(
+            background=theme['bg'],
+            foreground=theme['fg'],
+            insertbackground=theme['fg']
+        )
+
+        # Update line numbers colors
+        self.line_numbers.config(
+            background=theme['line_numbers_bg'],
+            foreground=theme['line_numbers_fg']
+        )
+
+        # Reconfigure tags with new theme colors
+        self.configure_tags()
+
+        # Reapply syntax highlighting to update colors
+        self.highlight_syntax()
+
+        # Update status bar
+        self.status_bar.config(text=f"Theme changed to: {theme_name}")
 
     def find_in_files(self):
         """Open multi-file search dialog"""

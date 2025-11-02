@@ -4,7 +4,7 @@ COBOL Editor with Syntax Highlighting and Search
 """
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog, ttk
 import re
 import os
 
@@ -16,6 +16,7 @@ class CobolEditor:
         self.root.geometry("900x700")
 
         self.current_file = None
+        self.working_directory = None
         self.search_index = "1.0"
         self.font_size = 11  # Default font size
         self.font_family = 'Courier New'
@@ -88,8 +89,34 @@ class CobolEditor:
         # Create menu bar
         self.create_menu()
 
-        # Create line numbers
+        # Create directory tree view
         theme = self.themes[self.current_theme]
+        self.tree_frame = tk.Frame(root, width=200, bg=theme['line_numbers_bg'])
+        self.tree_frame.pack(side=tk.LEFT, fill=tk.Y)
+        self.tree_frame.pack_propagate(False)  # Maintain fixed width
+
+        # Add tree label
+        self.tree_label = tk.Label(self.tree_frame, text="Workspace",
+                                   bg=theme['line_numbers_bg'],
+                                   fg=theme['line_numbers_fg'],
+                                   font=(self.font_family, 9, 'bold'))
+        self.tree_label.pack(side=tk.TOP, fill=tk.X, pady=2)
+
+        # Create tree view with scrollbar
+        tree_scroll_frame = tk.Frame(self.tree_frame, bg=theme['line_numbers_bg'])
+        tree_scroll_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+        tree_scrollbar = tk.Scrollbar(tree_scroll_frame)
+        tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.file_tree = ttk.Treeview(tree_scroll_frame, yscrollcommand=tree_scrollbar.set)
+        self.file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        tree_scrollbar.config(command=self.file_tree.yview)
+
+        # Bind tree events
+        self.file_tree.bind('<Double-Button-1>', self.on_tree_double_click)
+
+        # Create line numbers
         self.line_numbers = tk.Text(root, width=4, padx=3, takefocus=0,
                                      border=0, background=theme['line_numbers_bg'],
                                      foreground=theme['line_numbers_fg'],
@@ -139,6 +166,8 @@ class CobolEditor:
         file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
         file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
         file_menu.add_command(label="Save As", command=self.save_as_file)
+        file_menu.add_separator()
+        file_menu.add_command(label="Select Working Directory...", command=self.select_working_directory)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.exit_editor)
 
@@ -466,6 +495,13 @@ class CobolEditor:
             foreground=theme['line_numbers_fg']
         )
 
+        # Update tree frame colors
+        self.tree_frame.config(bg=theme['line_numbers_bg'])
+        self.tree_label.config(
+            bg=theme['line_numbers_bg'],
+            fg=theme['line_numbers_fg']
+        )
+
         # Reconfigure tags with new theme colors
         self.configure_tags()
 
@@ -565,6 +601,83 @@ class CobolEditor:
                 self.status_bar.config(text=f"Opened: {file_path} at line {line_num}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
+
+    def select_working_directory(self):
+        """Select a working directory to browse"""
+        directory = filedialog.askdirectory(title="Select Working Directory")
+        if directory:
+            self.working_directory = directory
+            self.populate_tree()
+            self.status_bar.config(text=f"Working directory: {directory}")
+
+    def populate_tree(self):
+        """Populate the tree view with files and directories"""
+        # Clear existing items
+        self.file_tree.delete(*self.file_tree.get_children())
+
+        if not self.working_directory or not os.path.exists(self.working_directory):
+            return
+
+        # Add root directory
+        root_name = os.path.basename(self.working_directory) or self.working_directory
+        root_node = self.file_tree.insert('', 'end', text=root_name,
+                                          values=[self.working_directory], open=True)
+
+        # Populate tree recursively
+        self.add_tree_nodes(root_node, self.working_directory)
+
+    def add_tree_nodes(self, parent, path):
+        """Recursively add nodes to the tree"""
+        try:
+            items = os.listdir(path)
+            # Sort: directories first, then files
+            items.sort(key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
+
+            for item in items:
+                # Skip hidden files and directories
+                if item.startswith('.'):
+                    continue
+
+                full_path = os.path.join(path, item)
+
+                if os.path.isdir(full_path):
+                    # Add directory
+                    node = self.file_tree.insert(parent, 'end', text=f"📁 {item}",
+                                                values=[full_path])
+                    # Add subdirectories and files
+                    self.add_tree_nodes(node, full_path)
+                else:
+                    # Add file with appropriate icon
+                    if item.endswith(('.cbl', '.cob', '.cobol')):
+                        icon = "📄"
+                    else:
+                        icon = "📋"
+                    self.file_tree.insert(parent, 'end', text=f"{icon} {item}",
+                                        values=[full_path])
+        except PermissionError:
+            # Skip directories we don't have permission to read
+            pass
+
+    def on_tree_double_click(self, event):
+        """Handle double-click on tree item"""
+        item = self.file_tree.selection()
+        if item:
+            values = self.file_tree.item(item[0], 'values')
+            if values:
+                file_path = values[0]
+                if os.path.isfile(file_path):
+                    # Open the file
+                    try:
+                        with open(file_path, 'r') as file:
+                            content = file.read()
+                            self.text_area.delete('1.0', 'end')
+                            self.text_area.insert('1.0', content)
+                            self.current_file = file_path
+                            self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                            self.highlight_syntax()
+                            self.status_bar.config(text=f"Opened: {file_path}")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
     def exit_editor(self):
         """Exit the editor"""

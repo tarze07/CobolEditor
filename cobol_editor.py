@@ -155,6 +155,9 @@ class CobolEditor:
         # Configure tags for syntax highlighting
         self.configure_tags()
 
+        # Configure menu colors to match the initial theme
+        self.configure_menu_colors()
+
         # Configure ttk widget colors to match the initial theme
         self.configure_ttk_colors()
 
@@ -163,61 +166,61 @@ class CobolEditor:
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def create_menu(self):
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
+        self.menubar = tk.Menu(self.root)
+        self.root.config(menu=self.menubar)
 
         # File menu
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
-        file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
-        file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
-        file_menu.add_command(label="Save As", command=self.save_as_file)
-        file_menu.add_separator()
-        file_menu.add_command(label="Select Working Directory...", command=self.select_working_directory)
-        file_menu.add_separator()
-        file_menu.add_command(label="Exit", command=self.exit_editor)
+        self.file_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="File", menu=self.file_menu)
+        self.file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
+        self.file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
+        self.file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
+        self.file_menu.add_command(label="Save As", command=self.save_as_file)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Select Working Directory...", command=self.select_working_directory)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Exit", command=self.exit_editor)
 
         # Edit menu
-        edit_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Edit", menu=edit_menu)
-        edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
-        edit_menu.add_command(label="Find Next", command=self.find_next, accelerator="F3")
-        edit_menu.add_command(label="Find in Files...", command=self.find_in_files, accelerator="Ctrl+Shift+F")
-        edit_menu.add_separator()
-        edit_menu.add_command(label="Select All", command=self.select_all, accelerator="Ctrl+A")
+        self.edit_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="Edit", menu=self.edit_menu)
+        self.edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
+        self.edit_menu.add_command(label="Find Next", command=self.find_next, accelerator="F3")
+        self.edit_menu.add_command(label="Find in Files...", command=self.find_in_files, accelerator="Ctrl+Shift+F")
+        self.edit_menu.add_separator()
+        self.edit_menu.add_command(label="Select All", command=self.select_all, accelerator="Ctrl+A")
 
         # View menu
-        view_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="View", menu=view_menu)
+        self.view_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="View", menu=self.view_menu)
 
         # Theme submenu (color schemes)
-        theme_menu = tk.Menu(view_menu, tearoff=0)
-        view_menu.add_cascade(label="Color Theme", menu=theme_menu)
-        theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
-        theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
-        theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
-        theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
+        self.theme_menu = tk.Menu(self.view_menu, tearoff=0)
+        self.view_menu.add_cascade(label="Color Theme", menu=self.theme_menu)
+        self.theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
+        self.theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
+        self.theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
+        self.theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
 
         # TTK Theme submenu (widget styles)
-        ttk_theme_menu = tk.Menu(view_menu, tearoff=0)
-        view_menu.add_cascade(label="TTK Theme", menu=ttk_theme_menu)
+        self.ttk_theme_menu = tk.Menu(self.view_menu, tearoff=0)
+        self.view_menu.add_cascade(label="TTK Theme", menu=self.ttk_theme_menu)
 
         # Add available ttk themes dynamically
         available_themes = self.style.theme_names()
         for theme in sorted(available_themes):
-            ttk_theme_menu.add_command(label=theme.capitalize(),
+            self.ttk_theme_menu.add_command(label=theme.capitalize(),
                                       command=lambda t=theme: self.apply_ttk_theme(t))
 
-        view_menu.add_separator()
-        view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
-        view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
-        view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
+        self.view_menu.add_separator()
+        self.view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
+        self.view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
+        self.view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
 
         # Help menu
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="About", command=self.show_about)
+        self.help_menu = tk.Menu(self.menubar, tearoff=0)
+        self.menubar.add_cascade(label="Help", menu=self.help_menu)
+        self.help_menu.add_command(label="About", command=self.show_about)
 
     def configure_tags(self):
         """Configure text tags for COBOL syntax highlighting"""
@@ -519,6 +522,9 @@ class CobolEditor:
             fg=theme['line_numbers_fg']
         )
 
+        # Update menu colors to match the new theme
+        self.configure_menu_colors()
+
         # Update ttk widget colors to match the new theme
         self.configure_ttk_colors()
 
@@ -568,6 +574,30 @@ class CobolEditor:
                             troughcolor=theme['bg'],
                             bordercolor=theme['line_numbers_bg'],
                             arrowcolor=theme['fg'])
+
+    def configure_menu_colors(self):
+        """Configure menu colors to match the current color theme"""
+        theme = self.themes[self.current_theme]
+
+        # List of all menus to configure
+        menus = [
+            self.menubar,
+            self.file_menu,
+            self.edit_menu,
+            self.view_menu,
+            self.theme_menu,
+            self.ttk_theme_menu,
+            self.help_menu
+        ]
+
+        # Configure colors for all menus
+        for menu in menus:
+            menu.config(
+                bg=theme['bg'],
+                fg=theme['fg'],
+                activebackground=theme['search_bg'],
+                activeforeground=theme['search_fg']
+            )
 
     def find_in_files(self):
         """Open multi-file search dialog"""

@@ -17,6 +17,8 @@ class CobolEditor:
 
         self.current_file = None
         self.search_index = "1.0"
+        self.font_size = 11  # Default font size
+        self.font_family = 'Courier New'
 
         # Create menu bar
         self.create_menu()
@@ -34,7 +36,7 @@ class CobolEditor:
         # Create text widget
         self.text_area = tk.Text(root, wrap=tk.NONE, undo=True,
                                   yscrollcommand=scrollbar.set,
-                                  font=('Courier New', 11))
+                                  font=(self.font_family, self.font_size))
         self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.config(command=self.text_area.yview)
 
@@ -44,6 +46,9 @@ class CobolEditor:
         self.text_area.bind('<Control-s>', lambda e: self.save_file())
         self.text_area.bind('<Control-o>', lambda e: self.open_file())
         self.text_area.bind('<Control-n>', lambda e: self.new_file())
+        self.text_area.bind('<Control-plus>', lambda e: self.increase_font_size())
+        self.text_area.bind('<Control-equal>', lambda e: self.increase_font_size())  # Ctrl+= (same as Ctrl++)
+        self.text_area.bind('<Control-minus>', lambda e: self.decrease_font_size())
 
         # Configure tags for syntax highlighting
         self.configure_tags()
@@ -71,8 +76,16 @@ class CobolEditor:
         menubar.add_cascade(label="Edit", menu=edit_menu)
         edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
         edit_menu.add_command(label="Find Next", command=self.find_next, accelerator="F3")
+        edit_menu.add_command(label="Find in Files...", command=self.find_in_files, accelerator="Ctrl+Shift+F")
         edit_menu.add_separator()
         edit_menu.add_command(label="Select All", command=self.select_all, accelerator="Ctrl+A")
+
+        # View menu
+        view_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="View", menu=view_menu)
+        view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
+        view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
+        view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
 
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -82,19 +95,19 @@ class CobolEditor:
     def configure_tags(self):
         """Configure text tags for COBOL syntax highlighting"""
         # Keywords
-        self.text_area.tag_config('keyword', foreground='#0000FF', font=('Courier New', 11, 'bold'))
+        self.text_area.tag_config('keyword', foreground='#0000FF', font=(self.font_family, self.font_size, 'bold'))
         # Data types
-        self.text_area.tag_config('datatype', foreground='#008080', font=('Courier New', 11, 'bold'))
+        self.text_area.tag_config('datatype', foreground='#008080', font=(self.font_family, self.font_size, 'bold'))
         # Strings
         self.text_area.tag_config('string', foreground='#A31515')
         # Comments
-        self.text_area.tag_config('comment', foreground='#008000', font=('Courier New', 11, 'italic'))
+        self.text_area.tag_config('comment', foreground='#008000', font=(self.font_family, self.font_size, 'italic'))
         # Numbers
         self.text_area.tag_config('number', foreground='#098658')
         # Division headers
-        self.text_area.tag_config('division', foreground='#AF00DB', font=('Courier New', 11, 'bold'))
+        self.text_area.tag_config('division', foreground='#AF00DB', font=(self.font_family, self.font_size, 'bold'))
         # Section headers
-        self.text_area.tag_config('section', foreground='#AF00DB', font=('Courier New', 11))
+        self.text_area.tag_config('section', foreground='#AF00DB', font=(self.font_family, self.font_size))
         # Search highlight
         self.text_area.tag_config('search', background='yellow')
 
@@ -299,13 +312,137 @@ class CobolEditor:
         """Show about dialog"""
         messagebox.showinfo("About",
                            "COBOL Editor\n\n"
-                           "A simple COBOL editor with syntax highlighting and search.\n\n"
+                           "A COBOL editor with syntax highlighting, search,\n"
+                           "multi-file search, and adjustable font size.\n\n"
                            "Shortcuts:\n"
                            "Ctrl+N - New File\n"
                            "Ctrl+O - Open File\n"
                            "Ctrl+S - Save File\n"
                            "Ctrl+F - Find\n"
-                           "F3 - Find Next")
+                           "F3 - Find Next\n"
+                           "Ctrl+Shift+F - Find in Files\n"
+                           "Ctrl++ - Increase Font Size\n"
+                           "Ctrl+- - Decrease Font Size")
+
+    def increase_font_size(self):
+        """Increase font size"""
+        if self.font_size < 72:  # Maximum font size
+            self.font_size += 2
+            self.update_font()
+            self.status_bar.config(text=f"Font size: {self.font_size}")
+
+    def decrease_font_size(self):
+        """Decrease font size"""
+        if self.font_size > 6:  # Minimum font size
+            self.font_size -= 2
+            self.update_font()
+            self.status_bar.config(text=f"Font size: {self.font_size}")
+
+    def reset_font_size(self):
+        """Reset font size to default"""
+        self.font_size = 11
+        self.update_font()
+        self.status_bar.config(text=f"Font size reset to: {self.font_size}")
+
+    def update_font(self):
+        """Update font for all text widgets"""
+        # Update main text area font
+        self.text_area.config(font=(self.font_family, self.font_size))
+        # Reconfigure tags with new font size
+        self.configure_tags()
+        # Reapply syntax highlighting
+        self.highlight_syntax()
+
+    def find_in_files(self):
+        """Open multi-file search dialog"""
+        # Ask for directory
+        directory = filedialog.askdirectory(title="Select directory to search in")
+        if not directory:
+            return
+
+        # Ask for search text
+        search_text = simpledialog.askstring("Find in Files", "Enter text to find:")
+        if not search_text:
+            return
+
+        # Search in files
+        results = []
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                if file.endswith(('.cbl', '.cob', '.cobol')):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            for line_num, line in enumerate(f, 1):
+                                if search_text.lower() in line.lower():
+                                    results.append((file_path, line_num, line.strip()))
+                    except Exception as e:
+                        continue
+
+        # Display results
+        if results:
+            self.show_search_results(search_text, results)
+        else:
+            messagebox.showinfo("Find in Files", f"No matches found for '{search_text}'")
+
+    def show_search_results(self, search_text, results):
+        """Show search results in a new window"""
+        results_window = tk.Toplevel(self.root)
+        results_window.title(f"Search Results: '{search_text}' ({len(results)} matches)")
+        results_window.geometry("800x500")
+
+        # Create frame for results
+        frame = tk.Frame(results_window)
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        # Add scrollbar
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        # Create listbox for results
+        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=(self.font_family, 10))
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Add results to listbox
+        for file_path, line_num, line_text in results:
+            display_text = f"{file_path}:{line_num}: {line_text}"
+            listbox.insert(tk.END, display_text)
+
+        # Bind double-click to open file
+        def on_double_click(event):
+            selection = listbox.curselection()
+            if selection:
+                index = selection[0]
+                file_path, line_num, _ = results[index]
+                self.open_file_at_line(file_path, line_num)
+                results_window.destroy()
+
+        listbox.bind('<Double-Button-1>', on_double_click)
+
+        # Add status label
+        status_label = tk.Label(results_window, text=f"Found {len(results)} matches. Double-click to open file.",
+                               anchor=tk.W)
+        status_label.pack(side=tk.BOTTOM, fill=tk.X)
+
+    def open_file_at_line(self, file_path, line_num):
+        """Open a file and jump to specific line"""
+        try:
+            with open(file_path, 'r') as file:
+                content = file.read()
+                self.text_area.delete('1.0', 'end')
+                self.text_area.insert('1.0', content)
+                self.current_file = file_path
+                self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
+                self.highlight_syntax()
+
+                # Jump to line
+                self.text_area.mark_set('insert', f"{line_num}.0")
+                self.text_area.see(f"{line_num}.0")
+
+                self.status_bar.config(text=f"Opened: {file_path} at line {line_num}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
 
     def exit_editor(self):
         """Exit the editor"""
@@ -319,6 +456,9 @@ def main():
 
     # Bind F3 for Find Next
     root.bind('<F3>', lambda e: editor.find_next())
+
+    # Bind Ctrl+Shift+F for Find in Files
+    root.bind('<Control-Shift-F>', lambda e: editor.find_in_files())
 
     root.mainloop()
 

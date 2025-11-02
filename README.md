@@ -1,6 +1,6 @@
 # COBOL Editor
 
-Edytor COBOL z podświetlaniem składni, wyszukiwaniem w wielu plikach i regulacją wielkości czcionki napisany w Pythonie.
+Edytor COBOL z podświetlaniem składni, wyszukiwaniem w wielu plikach i regulacją wielkości czcionki napisany w Pythonie z wykorzystaniem PySide6 (Qt).
 
 ## Funkcje
 
@@ -16,15 +16,25 @@ Edytor COBOL z podświetlaniem składni, wyszukiwaniem w wielu plikach i regulac
 
 ## Wymagania
 
-- Python 3.x
-- tkinter (zwykle zainstalowany domyślnie z Pythonem)
+- Python 3.8 lub nowszy
+- PySide6
 
 ## Instalacja
 
 Sklonuj repozytorium:
 ```bash
 git clone <repository-url>
-cd pluginCobol
+cd CobolEditor
+```
+
+Zainstaluj wymagane zależności:
+```bash
+pip install -r requirements.txt
+```
+
+lub bezpośrednio:
+```bash
+pip install PySide6
 ```
 
 ## Uruchamianie
@@ -138,9 +148,10 @@ W repozytorium znajduje się przykładowy plik `example.cbl` do testowania edyto
 ## Struktura projektu
 
 ```
-pluginCobol/
+CobolEditor/
 ├── cobol_editor.py    # Główny plik edytora
 ├── example.cbl        # Przykładowy plik COBOL
+├── requirements.txt   # Zależności projektu
 └── README.md          # Ta dokumentacja
 ```
 

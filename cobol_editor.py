@@ -1,37 +1,239 @@
 #!/usr/bin/env python3
 """
 COBOL Editor with Syntax Highlighting and Search
+Migrated to PySide6
 """
 
-import customtkinter as ctk
-import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
-import re
+import sys
 import os
+import re
+from PySide6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLabel, QFrame,
+    QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidget,
+    QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu
+)
+from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot
+from PySide6.QtGui import (
+    QColor, QPainter, QTextFormat, QFont, QTextCharFormat,
+    QSyntaxHighlighter, QTextCursor, QTextDocument, QKeySequence,
+    QAction, QPalette
+)
 
-# Set CustomTkinter appearance mode and default color theme
-ctk.set_appearance_mode("System")  # Modes: "System" (default), "Dark", "Light"
-ctk.set_default_color_theme("blue")  # Themes: "blue" (default), "green", "dark-blue"
+
+class LineNumberArea(QWidget):
+    """Widget for displaying line numbers"""
+    def __init__(self, editor):
+        super().__init__(editor)
+        self.editor = editor
+
+    def sizeHint(self):
+        return QSize(self.editor.line_number_area_width(), 0)
+
+    def paintEvent(self, event):
+        self.editor.line_number_area_paint_event(event)
 
 
-class CobolEditor:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("COBOL Editor")
-        self.root.geometry("900x700")
+class CobolSyntaxHighlighter(QSyntaxHighlighter):
+    """Syntax highlighter for COBOL"""
+    def __init__(self, parent, theme):
+        super().__init__(parent)
+        self.theme = theme
+        self.highlighting_rules = []
+        self.update_highlighting_rules()
 
+    def update_theme(self, theme):
+        """Update theme and refresh highlighting"""
+        self.theme = theme
+        self.update_highlighting_rules()
+        self.rehighlight()
+
+    def update_highlighting_rules(self):
+        """Setup highlighting rules based on current theme"""
+        self.highlighting_rules = []
+
+        # Division headers
+        division_format = QTextCharFormat()
+        division_format.setForeground(QColor(self.theme['division']))
+        division_format.setFontWeight(QFont.Bold)
+        division_pattern = r'\b(IDENTIFICATION|ENVIRONMENT|DATA|PROCEDURE)\s+DIVISION\b'
+        self.highlighting_rules.append((re.compile(division_pattern, re.IGNORECASE), division_format))
+
+        # Section headers
+        section_format = QTextCharFormat()
+        section_format.setForeground(QColor(self.theme['section']))
+        section_pattern = r'\b(CONFIGURATION|INPUT-OUTPUT|FILE|WORKING-STORAGE|LINKAGE|LOCAL-STORAGE)\s+SECTION\b'
+        self.highlighting_rules.append((re.compile(section_pattern, re.IGNORECASE), section_format))
+
+        # Keywords
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            'ACCEPT', 'ACCESS', 'ADD', 'ADDRESS', 'ADVANCING', 'AFTER', 'ALL', 'ALPHABET', 'ALPHABETIC',
+            'ALPHABETIC-LOWER', 'ALPHABETIC-UPPER', 'ALPHANUMERIC', 'ALPHANUMERIC-EDITED',
+            'ALSO', 'ALTER', 'ALTERNATE', 'AND', 'ANY', 'ARE', 'AREA', 'AREAS', 'ASCENDING', 'ASSIGN', 'AT',
+            'AUTHOR', 'BEFORE', 'BINARY', 'BLANK', 'BLOCK', 'BOTTOM', 'BY', 'CALL', 'CANCEL', 'CD', 'CF', 'CH',
+            'CHARACTER', 'CHARACTERS', 'CLASS', 'CLOCK-UNITS', 'CLOSE', 'COBOL', 'CODE', 'CODE-SET',
+            'COLLATING', 'COLUMN', 'COMMA', 'COMMON', 'COMMUNICATION', 'COMP', 'COMPUTE',
+            'COMPUTATIONAL', 'CONFIGURATION', 'CONTAINS', 'CONTENT', 'CONTINUE', 'CONTROL',
+            'CONTROLS', 'CONVERTING', 'COPY', 'CORR', 'CORRESPONDING', 'COUNT', 'CURRENCY', 'DATE',
+            'DATE-COMPILED', 'DATE-WRITTEN', 'DAY', 'DAY-OF-WEEK', 'DE', 'DEBUG-CONTENTS',
+            'DEBUG-ITEM', 'DEBUG-LINE', 'DEBUG-NAME', 'DEBUG-SUB-1', 'DEBUG-SUB-2',
+            'DEBUG-SUB-3', 'DEBUGGING', 'DECIMAL-POINT', 'DECLARATIVES', 'DELETE', 'DELIMITED',
+            'DELIMITER', 'DEPENDING', 'DESCENDING', 'DESTINATION', 'DETAIL', 'DISABLE', 'DISPLAY',
+            'DIVIDE', 'DOWN', 'DUPLICATES', 'DYNAMIC', 'EGI', 'ELSE', 'EMI', 'ENABLE', 'END', 'END-ADD',
+            'END-CALL', 'END-COMPUTE', 'END-DELETE', 'END-DIVIDE', 'END-EVALUATE', 'END-IF',
+            'END-MULTIPLY', 'END-OF-PAGE', 'END-PERFORM', 'END-READ', 'END-RECEIVE',
+            'END-RETURN', 'END-REWRITE', 'END-SEARCH', 'END-START', 'END-STRING', 'END-SUBTRACT',
+            'END-UNSTRING', 'END-WRITE', 'ENTER', 'ENTRY', 'ENVIRONMENT', 'EOP', 'EQUAL', 'ERROR', 'ESI',
+            'EVALUATE', 'EVERY', 'EXCEPTION', 'EXIT', 'EXTEND', 'EXTERNAL', 'FALSE', 'FD', 'FILE',
+            'FILE-CONTROL', 'FILLER', 'FINAL', 'FIRST', 'FOOTING', 'FOR', 'FROM', 'FUNCTION', 'GENERATE',
+            'GIVING', 'GLOBAL', 'GO', 'GOBACK', 'GREATER', 'GROUP', 'HEADING', 'HIGH-VALUE', 'HIGH-VALUES',
+            'I-O', 'I-O-CONTROL', 'IF', 'IN', 'INDEX', 'INDEXED', 'INDICATE', 'INITIAL', 'INITIALIZE',
+            'INITIATE', 'INPUT', 'INPUT-OUTPUT', 'INSPECT', 'INSTALLATION', 'INTO', 'INVALID', 'IS',
+            'JUST', 'JUSTIFIED', 'KEY', 'LABEL', 'LAST', 'LEADING', 'LEFT', 'LENGTH', 'LESS', 'LIMIT', 'LIMITS',
+            'LINAGE', 'LINAGE-COUNTER', 'LINE', 'LINE-COUNTER', 'LINES', 'LINKAGE', 'LOCK',
+            'LOW-VALUE', 'LOW-VALUES', 'MEMORY', 'MERGE', 'MESSAGE', 'MODE', 'MODULES', 'MOVE', 'MULTIPLE',
+            'MULTIPLY', 'NATIVE', 'NEGATIVE', 'NEXT', 'NO', 'NOT', 'NUMBER', 'NUMERIC', 'NUMERIC-EDITED',
+            'OBJECT-COMPUTER', 'OCCURS', 'OF', 'OFF', 'OMITTED', 'ON', 'OPEN', 'OPTIONAL', 'OR', 'ORDER',
+            'ORGANIZATION', 'OTHER', 'OUTPUT', 'OVERFLOW', 'PACKED-DECIMAL', 'PADDING', 'PAGE',
+            'PAGE-COUNTER', 'PERFORM', 'PF', 'PH', 'PICTURE', 'PIC', 'PLUS', 'POINTER', 'POSITION', 'POSITIVE',
+            'PRINTING', 'PROCEDURE', 'PROCEDURES', 'PROCEED', 'PROGRAM', 'PROGRAM-ID', 'PURGE', 'QUEUE',
+            'QUOTE', 'QUOTES', 'RANDOM', 'RD', 'READ', 'RECEIVE', 'RECORD', 'RECORDS', 'REDEFINES', 'REEL',
+            'REFERENCE', 'REFERENCES', 'RELATIVE', 'RELEASE', 'REMAINDER', 'REMOVAL', 'RENAMES',
+            'REPLACE', 'REPLACING', 'REPORT', 'REPORTING', 'REPORTS', 'RERUN', 'RESERVE', 'RESET',
+            'RETURN', 'REVERSED', 'REWIND', 'REWRITE', 'RF', 'RH', 'RIGHT', 'ROUNDED', 'RUN', 'SAME', 'SD',
+            'SEARCH', 'SECTION', 'SECURITY', 'SEGMENT', 'SEGMENT-LIMIT', 'SELECT', 'SEND', 'SENTENCE',
+            'SEPARATE', 'SEQUENCE', 'SEQUENTIAL', 'SET', 'SIGN', 'SIZE', 'SORT', 'SORT-MERGE', 'SOURCE',
+            'SOURCE-COMPUTER', 'SPACE', 'SPACES', 'SPECIAL-NAMES', 'STANDARD', 'STANDARD-1',
+            'STANDARD-2', 'START', 'STATUS', 'STOP', 'STRING', 'SUB-QUEUE-1', 'SUB-QUEUE-2',
+            'SUB-QUEUE-3', 'SUBTRACT', 'SUM', 'SUPPRESS', 'SYMBOLIC', 'SYNC', 'SYNCHRONIZED', 'TABLE',
+            'TALLYING', 'TAPE', 'TERMINAL', 'TERMINATE', 'TEST', 'TEXT', 'THAN', 'THEN', 'THROUGH', 'THRU',
+            'TIME', 'TIMES', 'TO', 'TOP', 'TRAILING', 'TRUE', 'TYPE', 'UNIT', 'UNSTRING', 'UNTIL', 'UP', 'UPON',
+            'USAGE', 'USE', 'USING', 'VALUE', 'VALUES', 'VARYING', 'WHEN', 'WITH', 'WORDS',
+            'WORKING-STORAGE', 'WRITE', 'ZERO', 'ZEROES', 'ZEROS'
+        ]
+        keyword_pattern = r'\b(' + '|'.join(keywords) + r')\b'
+        self.highlighting_rules.append((re.compile(keyword_pattern, re.IGNORECASE), keyword_format))
+
+        # Data types (PIC clause)
+        datatype_format = QTextCharFormat()
+        datatype_format.setForeground(QColor(self.theme['datatype']))
+        datatype_format.setFontWeight(QFont.Bold)
+        datatype_pattern = r'\bPIC\s+[X9A\(\)V\-\+\*\$\,\.ZS]+'
+        self.highlighting_rules.append((re.compile(datatype_pattern, re.IGNORECASE), datatype_format))
+
+        # Comments (lines starting with *)
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        comment_pattern = r'^\s*\*.*$'
+        self.highlighting_rules.append((re.compile(comment_pattern, re.MULTILINE), comment_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        string_pattern = r'["\']([^"\']*)["\']'
+        self.highlighting_rules.append((re.compile(string_pattern), string_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        number_pattern = r'\b\d+(\.\d+)?\b'
+        self.highlighting_rules.append((re.compile(number_pattern), number_format))
+
+    def highlightBlock(self, text):
+        """Apply syntax highlighting to the given text block"""
+        for pattern, format in self.highlighting_rules:
+            for match in pattern.finditer(text):
+                start = match.start()
+                length = match.end() - start
+                self.setFormat(start, length, format)
+
+
+class CodeEditor(QPlainTextEdit):
+    """Code editor widget with line numbers"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.line_number_area = LineNumberArea(self)
+        self.blockCountChanged.connect(self.update_line_number_area_width)
+        self.updateRequest.connect(self.update_line_number_area)
+        self.update_line_number_area_width(0)
+
+        # Set monospace font
+        font = QFont("Consolas", 18)
+        font.setStyleHint(QFont.Monospace)
+        self.setFont(font)
+
+        # Enable tab key
+        self.setTabStopDistance(40)
+
+    def line_number_area_width(self):
+        """Calculate the width needed for line numbers"""
+        digits = len(str(max(1, self.blockCount())))
+        space = 10 + self.fontMetrics().horizontalAdvance('9') * digits
+        return space
+
+    def update_line_number_area_width(self, _):
+        """Update the width of line number area"""
+        self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
+
+    def update_line_number_area(self, rect, dy):
+        """Update the line number area when scrolling"""
+        if dy:
+            self.line_number_area.scroll(0, dy)
+        else:
+            self.line_number_area.update(0, rect.y(), self.line_number_area.width(), rect.height())
+
+        if rect.contains(self.viewport().rect()):
+            self.update_line_number_area_width(0)
+
+    def resizeEvent(self, event):
+        """Handle resize events"""
+        super().resizeEvent(event)
+        cr = self.contentsRect()
+        self.line_number_area.setGeometry(QRect(cr.left(), cr.top(),
+                                                  self.line_number_area_width(), cr.height()))
+
+    def line_number_area_paint_event(self, event):
+        """Paint the line numbers"""
+        painter = QPainter(self.line_number_area)
+
+        # Get colors from palette
+        bg_color = self.palette().color(QPalette.Window)
+        fg_color = self.palette().color(QPalette.WindowText)
+
+        painter.fillRect(event.rect(), bg_color)
+
+        block = self.firstVisibleBlock()
+        block_number = block.blockNumber()
+        top = int(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
+        bottom = top + int(self.blockBoundingRect(block).height())
+
+        while block.isValid() and top <= event.rect().bottom():
+            if block.isVisible() and bottom >= event.rect().top():
+                number = str(block_number + 1)
+                painter.setPen(fg_color)
+                painter.drawText(0, top, self.line_number_area.width() - 5,
+                               self.fontMetrics().height(), Qt.AlignRight, number)
+
+            block = block.next()
+            top = bottom
+            bottom = top + int(self.blockBoundingRect(block).height())
+            block_number += 1
+
+
+class CobolEditor(QMainWindow):
+    def __init__(self):
+        super().__init__()
         self.current_file = None
         self.working_directory = None
-        self.search_index = "1.0"
-        self.font_size = 18  # Default font size (increased for better readability)
-        self.font_family = 'Consolas'  # Using Consolas for better readability
-        self.current_theme = 'Light'  # Default theme
-
-        print(f"DEBUG: Starting COBOL Editor with font: {self.font_family}, size: {self.font_size}")
-
-        # Initialize ttk style for ttk themes
-        self.style = ttk.Style()
-        self.current_ttk_theme = self.style.theme_use()  # Get current ttk theme
+        self.search_text = ""
+        self.last_search_position = 0
+        self.font_size = 18
+        self.font_family = 'Consolas'
+        self.current_theme = 'Light'
 
         # Define color themes
         self.themes = {
@@ -97,544 +299,356 @@ class CobolEditor:
             }
         }
 
+        self.init_ui()
+        self.apply_theme(self.current_theme)
+
+    def init_ui(self):
+        """Initialize the user interface"""
+        self.setWindowTitle("COBOL Editor")
+        self.setGeometry(100, 100, 900, 700)
+
+        # Create central widget and main layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        main_layout = QHBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # Create splitter for resizable panels
+        splitter = QSplitter(Qt.Horizontal)
+        main_layout.addWidget(splitter)
+
+        # Create file tree panel
+        tree_container = QWidget()
+        tree_layout = QVBoxLayout(tree_container)
+        tree_layout.setContentsMargins(0, 0, 0, 0)
+        tree_layout.setSpacing(0)
+
+        self.tree_label = QLabel("Workspace")
+        self.tree_label.setAlignment(Qt.AlignCenter)
+        self.tree_label.setMaximumHeight(25)
+        tree_layout.addWidget(self.tree_label)
+
+        self.file_tree = QTreeWidget()
+        self.file_tree.setHeaderHidden(True)
+        self.file_tree.setMaximumWidth(300)
+        self.file_tree.setMinimumWidth(150)
+        self.file_tree.itemDoubleClicked.connect(self.on_tree_double_click)
+        tree_layout.addWidget(self.file_tree)
+
+        splitter.addWidget(tree_container)
+
+        # Create text editor
+        self.text_area = CodeEditor()
+        self.highlighter = CobolSyntaxHighlighter(self.text_area.document(),
+                                                   self.themes[self.current_theme])
+        self.text_area.textChanged.connect(self.on_text_changed)
+        splitter.addWidget(self.text_area)
+
+        # Set splitter sizes (200px for tree, rest for editor)
+        splitter.setSizes([200, 700])
+
         # Create menu bar
         self.create_menu()
 
-        # Create directory tree view
-        theme = self.themes[self.current_theme]
-        self.tree_frame = ctk.CTkFrame(root, width=200, fg_color=theme['line_numbers_bg'])
-        self.tree_frame.pack(side=tk.LEFT, fill=tk.Y)
-        self.tree_frame.pack_propagate(False)  # Maintain fixed width
-
-        # Add tree label
-        self.tree_label = ctk.CTkLabel(self.tree_frame, text="Workspace",
-                                   fg_color=theme['line_numbers_bg'],
-                                   text_color=theme['line_numbers_fg'],
-                                   font=(self.font_family, 9, 'bold'))
-        self.tree_label.pack(side=tk.TOP, fill=tk.X, pady=2)
-
-        # Create tree view with scrollbar
-        tree_scroll_frame = ctk.CTkFrame(self.tree_frame, fg_color=theme['line_numbers_bg'])
-        tree_scroll_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        tree_scrollbar = ctk.CTkScrollbar(tree_scroll_frame)
-        tree_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        self.file_tree = ttk.Treeview(tree_scroll_frame, yscrollcommand=tree_scrollbar.set)
-        self.file_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        tree_scrollbar.configure(command=self.file_tree.yview)
-
-        # Bind tree events
-        self.file_tree.bind('<Double-Button-1>', self.on_tree_double_click)
-
-        # Create line numbers
-        self.line_numbers = tk.Text(root, width=4, padx=3, takefocus=0,
-                                     border=0, background=theme['line_numbers_bg'],
-                                     foreground=theme['line_numbers_fg'],
-                                     state='disabled', wrap='none',
-                                     font=(self.font_family, self.font_size))
-        self.line_numbers.pack(side=tk.LEFT, fill=tk.Y)
-
-        # Create scrollbar
-        scrollbar = tk.Scrollbar(root)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Create text widget
-        self.text_area = tk.Text(root, wrap=tk.NONE, undo=True,
-                                  yscrollcommand=scrollbar.set,
-                                  font=(self.font_family, self.font_size),
-                                  background=theme['bg'],
-                                  foreground=theme['fg'],
-                                  insertbackground=theme['fg'])
-        self.text_area.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.text_area.yview)
-
-        # Bind events
-        self.text_area.bind('<KeyRelease>', self.on_key_release)
-        self.text_area.bind('<Control-f>', lambda e: self.find_text())
-        self.text_area.bind('<Control-s>', lambda e: self.save_file())
-        self.text_area.bind('<Control-o>', lambda e: self.open_file())
-        self.text_area.bind('<Control-n>', lambda e: self.new_file())
-
-        # Font size shortcuts - bind to root window for better compatibility
-        self.root.bind('<Control-plus>', self.handle_increase_font)
-        self.root.bind('<Control-equal>', self.handle_increase_font)  # Ctrl+= (same as Ctrl++)
-        self.root.bind('<Control-minus>', self.handle_decrease_font)
-        self.root.bind('<Control-underscore>', self.handle_decrease_font)  # Shift+- on some keyboards
-        self.root.bind('<Control-KP_Add>', self.handle_increase_font)  # Numpad +
-        self.root.bind('<Control-KP_Subtract>', self.handle_decrease_font)  # Numpad -
-
-        # Configure tags for syntax highlighting
-        self.configure_tags()
-
-        # Configure menu colors to match the initial theme
-        self.configure_menu_colors()
-
-        # Configure ttk widget colors to match the initial theme
-        self.configure_ttk_colors()
-
-        # Status bar
-        self.status_bar = ctk.CTkLabel(root, text="Ready", anchor=tk.W)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        # Create status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready")
 
     def create_menu(self):
-        self.menubar = tk.Menu(self.root)
-        self.root.configure(menu=self.menubar)
+        """Create menu bar"""
+        menubar = self.menuBar()
 
         # File menu
-        self.file_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label="File", menu=self.file_menu)
-        self.file_menu.add_command(label="New", command=self.new_file, accelerator="Ctrl+N")
-        self.file_menu.add_command(label="Open", command=self.open_file, accelerator="Ctrl+O")
-        self.file_menu.add_command(label="Save", command=self.save_file, accelerator="Ctrl+S")
-        self.file_menu.add_command(label="Save As", command=self.save_as_file)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Select Working Directory...", command=self.select_working_directory)
-        self.file_menu.add_separator()
-        self.file_menu.add_command(label="Exit", command=self.exit_editor)
+        file_menu = menubar.addMenu("File")
+
+        new_action = QAction("New", self)
+        new_action.setShortcut(QKeySequence.New)
+        new_action.triggered.connect(self.new_file)
+        file_menu.addAction(new_action)
+
+        open_action = QAction("Open", self)
+        open_action.setShortcut(QKeySequence.Open)
+        open_action.triggered.connect(self.open_file)
+        file_menu.addAction(open_action)
+
+        save_action = QAction("Save", self)
+        save_action.setShortcut(QKeySequence.Save)
+        save_action.triggered.connect(self.save_file)
+        file_menu.addAction(save_action)
+
+        save_as_action = QAction("Save As", self)
+        save_as_action.triggered.connect(self.save_as_file)
+        file_menu.addAction(save_as_action)
+
+        file_menu.addSeparator()
+
+        select_dir_action = QAction("Select Working Directory...", self)
+        select_dir_action.triggered.connect(self.select_working_directory)
+        file_menu.addAction(select_dir_action)
+
+        file_menu.addSeparator()
+
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self.close)
+        file_menu.addAction(exit_action)
 
         # Edit menu
-        self.edit_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label="Edit", menu=self.edit_menu)
-        self.edit_menu.add_command(label="Find", command=self.find_text, accelerator="Ctrl+F")
-        self.edit_menu.add_command(label="Find Next", command=self.find_next, accelerator="F3")
-        self.edit_menu.add_command(label="Find in Files...", command=self.find_in_files, accelerator="Ctrl+Shift+F")
-        self.edit_menu.add_separator()
-        self.edit_menu.add_command(label="Select All", command=self.select_all, accelerator="Ctrl+A")
+        edit_menu = menubar.addMenu("Edit")
+
+        find_action = QAction("Find", self)
+        find_action.setShortcut(QKeySequence.Find)
+        find_action.triggered.connect(self.find_text)
+        edit_menu.addAction(find_action)
+
+        find_next_action = QAction("Find Next", self)
+        find_next_action.setShortcut(QKeySequence.FindNext)
+        find_next_action.triggered.connect(self.find_next)
+        edit_menu.addAction(find_next_action)
+
+        find_in_files_action = QAction("Find in Files...", self)
+        find_in_files_action.setShortcut("Ctrl+Shift+F")
+        find_in_files_action.triggered.connect(self.find_in_files)
+        edit_menu.addAction(find_in_files_action)
+
+        edit_menu.addSeparator()
+
+        select_all_action = QAction("Select All", self)
+        select_all_action.setShortcut(QKeySequence.SelectAll)
+        select_all_action.triggered.connect(self.text_area.selectAll)
+        edit_menu.addAction(select_all_action)
 
         # View menu
-        self.view_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label="View", menu=self.view_menu)
+        view_menu = menubar.addMenu("View")
 
-        # Theme submenu (color schemes)
-        self.theme_menu = tk.Menu(self.view_menu, tearoff=0)
-        self.view_menu.add_cascade(label="Color Theme", menu=self.theme_menu)
-        self.theme_menu.add_command(label="Light", command=lambda: self.apply_theme('Light'))
-        self.theme_menu.add_command(label="Dark", command=lambda: self.apply_theme('Dark'))
-        self.theme_menu.add_command(label="High Contrast", command=lambda: self.apply_theme('High Contrast'))
-        self.theme_menu.add_command(label="Monokai", command=lambda: self.apply_theme('Monokai'))
+        # Theme submenu
+        theme_menu = view_menu.addMenu("Color Theme")
 
-        # TTK Theme submenu (widget styles)
-        self.ttk_theme_menu = tk.Menu(self.view_menu, tearoff=0)
-        self.view_menu.add_cascade(label="TTK Theme", menu=self.ttk_theme_menu)
+        for theme_name in self.themes.keys():
+            theme_action = QAction(theme_name, self)
+            theme_action.triggered.connect(lambda checked, t=theme_name: self.apply_theme(t))
+            theme_menu.addAction(theme_action)
 
-        # Add available ttk themes dynamically
-        available_themes = self.style.theme_names()
-        for theme in sorted(available_themes):
-            self.ttk_theme_menu.add_command(label=theme.capitalize(),
-                                      command=lambda t=theme: self.apply_ttk_theme(t))
+        view_menu.addSeparator()
 
-        self.view_menu.add_separator()
-        self.view_menu.add_command(label="Increase Font Size", command=self.increase_font_size, accelerator="Ctrl++")
-        self.view_menu.add_command(label="Decrease Font Size", command=self.decrease_font_size, accelerator="Ctrl+-")
-        self.view_menu.add_command(label="Reset Font Size", command=self.reset_font_size)
+        increase_font_action = QAction("Increase Font Size", self)
+        increase_font_action.setShortcut(QKeySequence.ZoomIn)
+        increase_font_action.triggered.connect(self.increase_font_size)
+        view_menu.addAction(increase_font_action)
+
+        decrease_font_action = QAction("Decrease Font Size", self)
+        decrease_font_action.setShortcut(QKeySequence.ZoomOut)
+        decrease_font_action.triggered.connect(self.decrease_font_size)
+        view_menu.addAction(decrease_font_action)
+
+        reset_font_action = QAction("Reset Font Size", self)
+        reset_font_action.triggered.connect(self.reset_font_size)
+        view_menu.addAction(reset_font_action)
 
         # Help menu
-        self.help_menu = tk.Menu(self.menubar, tearoff=0)
-        self.menubar.add_cascade(label="Help", menu=self.help_menu)
-        self.help_menu.add_command(label="About", command=self.show_about)
+        help_menu = menubar.addMenu("Help")
 
-    def configure_tags(self):
-        """Configure text tags for COBOL syntax highlighting"""
-        theme = self.themes[self.current_theme]
+        about_action = QAction("About", self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
 
-        # Keywords
-        self.text_area.tag_config('keyword', foreground=theme['keyword'],
-                                  font=(self.font_family, self.font_size, 'bold'))
-        # Data types
-        self.text_area.tag_config('datatype', foreground=theme['datatype'],
-                                  font=(self.font_family, self.font_size, 'bold'))
-        # Strings
-        self.text_area.tag_config('string', foreground=theme['string'])
-        # Comments
-        self.text_area.tag_config('comment', foreground=theme['comment'],
-                                  font=(self.font_family, self.font_size, 'italic'))
-        # Numbers
-        self.text_area.tag_config('number', foreground=theme['number'])
-        # Division headers
-        self.text_area.tag_config('division', foreground=theme['division'],
-                                  font=(self.font_family, self.font_size, 'bold'))
-        # Section headers
-        self.text_area.tag_config('section', foreground=theme['section'],
-                                  font=(self.font_family, self.font_size))
-        # Search highlight
-        self.text_area.tag_config('search', background=theme['search_bg'],
-                                  foreground=theme['search_fg'])
-
-    def get_cobol_patterns(self):
-        """Return regex patterns for COBOL syntax"""
-        return {
-            'division': r'\b(IDENTIFICATION|ENVIRONMENT|DATA|PROCEDURE)\s+DIVISION\b',
-            'section': r'\b(CONFIGURATION|INPUT-OUTPUT|FILE|WORKING-STORAGE|LINKAGE|LOCAL-STORAGE)\s+SECTION\b',
-            'keyword': r'\b(ACCEPT|ACCESS|ADD|ADDRESS|ADVANCING|AFTER|ALL|ALPHABET|ALPHABETIC|'
-                      r'ALPHABETIC-LOWER|ALPHABETIC-UPPER|ALPHANUMERIC|ALPHANUMERIC-EDITED|'
-                      r'ALSO|ALTER|ALTERNATE|AND|ANY|ARE|AREA|AREAS|ASCENDING|ASSIGN|AT|'
-                      r'AUTHOR|BEFORE|BINARY|BLANK|BLOCK|BOTTOM|BY|CALL|CANCEL|CD|CF|CH|'
-                      r'CHARACTER|CHARACTERS|CLASS|CLOCK-UNITS|CLOSE|COBOL|CODE|CODE-SET|'
-                      r'COLLATING|COLUMN|COMMA|COMMON|COMMUNICATION|COMP|COMPUTE|'
-                      r'COMPUTATIONAL|CONFIGURATION|CONTAINS|CONTENT|CONTINUE|CONTROL|'
-                      r'CONTROLS|CONVERTING|COPY|CORR|CORRESPONDING|COUNT|CURRENCY|DATE|'
-                      r'DATE-COMPILED|DATE-WRITTEN|DAY|DAY-OF-WEEK|DE|DEBUG-CONTENTS|'
-                      r'DEBUG-ITEM|DEBUG-LINE|DEBUG-NAME|DEBUG-SUB-1|DEBUG-SUB-2|'
-                      r'DEBUG-SUB-3|DEBUGGING|DECIMAL-POINT|DECLARATIVES|DELETE|DELIMITED|'
-                      r'DELIMITER|DEPENDING|DESCENDING|DESTINATION|DETAIL|DISABLE|DISPLAY|'
-                      r'DIVIDE|DOWN|DUPLICATES|DYNAMIC|EGI|ELSE|EMI|ENABLE|END|END-ADD|'
-                      r'END-CALL|END-COMPUTE|END-DELETE|END-DIVIDE|END-EVALUATE|END-IF|'
-                      r'END-MULTIPLY|END-OF-PAGE|END-PERFORM|END-READ|END-RECEIVE|'
-                      r'END-RETURN|END-REWRITE|END-SEARCH|END-START|END-STRING|END-SUBTRACT|'
-                      r'END-UNSTRING|END-WRITE|ENTER|ENTRY|ENVIRONMENT|EOP|EQUAL|ERROR|ESI|'
-                      r'EVALUATE|EVERY|EXCEPTION|EXIT|EXTEND|EXTERNAL|FALSE|FD|FILE|'
-                      r'FILE-CONTROL|FILLER|FINAL|FIRST|FOOTING|FOR|FROM|FUNCTION|GENERATE|'
-                      r'GIVING|GLOBAL|GO|GOBACK|GREATER|GROUP|HEADING|HIGH-VALUE|HIGH-VALUES|'
-                      r'I-O|I-O-CONTROL|IF|IN|INDEX|INDEXED|INDICATE|INITIAL|INITIALIZE|'
-                      r'INITIATE|INPUT|INPUT-OUTPUT|INSPECT|INSTALLATION|INTO|INVALID|IS|'
-                      r'JUST|JUSTIFIED|KEY|LABEL|LAST|LEADING|LEFT|LENGTH|LESS|LIMIT|LIMITS|'
-                      r'LINAGE|LINAGE-COUNTER|LINE|LINE-COUNTER|LINES|LINKAGE|LOCK|'
-                      r'LOW-VALUE|LOW-VALUES|MEMORY|MERGE|MESSAGE|MODE|MODULES|MOVE|MULTIPLE|'
-                      r'MULTIPLY|NATIVE|NEGATIVE|NEXT|NO|NOT|NUMBER|NUMERIC|NUMERIC-EDITED|'
-                      r'OBJECT-COMPUTER|OCCURS|OF|OFF|OMITTED|ON|OPEN|OPTIONAL|OR|ORDER|'
-                      r'ORGANIZATION|OTHER|OUTPUT|OVERFLOW|PACKED-DECIMAL|PADDING|PAGE|'
-                      r'PAGE-COUNTER|PERFORM|PF|PH|PICTURE|PIC|PLUS|POINTER|POSITION|POSITIVE|'
-                      r'PRINTING|PROCEDURE|PROCEDURES|PROCEED|PROGRAM|PROGRAM-ID|PURGE|QUEUE|'
-                      r'QUOTE|QUOTES|RANDOM|RD|READ|RECEIVE|RECORD|RECORDS|REDEFINES|REEL|'
-                      r'REFERENCE|REFERENCES|RELATIVE|RELEASE|REMAINDER|REMOVAL|RENAMES|'
-                      r'REPLACE|REPLACING|REPORT|REPORTING|REPORTS|RERUN|RESERVE|RESET|'
-                      r'RETURN|REVERSED|REWIND|REWRITE|RF|RH|RIGHT|ROUNDED|RUN|SAME|SD|'
-                      r'SEARCH|SECTION|SECURITY|SEGMENT|SEGMENT-LIMIT|SELECT|SEND|SENTENCE|'
-                      r'SEPARATE|SEQUENCE|SEQUENTIAL|SET|SIGN|SIZE|SORT|SORT-MERGE|SOURCE|'
-                      r'SOURCE-COMPUTER|SPACE|SPACES|SPECIAL-NAMES|STANDARD|STANDARD-1|'
-                      r'STANDARD-2|START|STATUS|STOP|STRING|SUB-QUEUE-1|SUB-QUEUE-2|'
-                      r'SUB-QUEUE-3|SUBTRACT|SUM|SUPPRESS|SYMBOLIC|SYNC|SYNCHRONIZED|TABLE|'
-                      r'TALLYING|TAPE|TERMINAL|TERMINATE|TEST|TEXT|THAN|THEN|THROUGH|THRU|'
-                      r'TIME|TIMES|TO|TOP|TRAILING|TRUE|TYPE|UNIT|UNSTRING|UNTIL|UP|UPON|'
-                      r'USAGE|USE|USING|VALUE|VALUES|VARYING|WHEN|WITH|WORDS|'
-                      r'WORKING-STORAGE|WRITE|ZERO|ZEROES|ZEROS)\b',
-            'datatype': r'\bPIC\s+[X9A\(\)V\-\+\*\$\,\.ZS]+\b',
-            'comment': r'^\s*\*.*$',
-            'string': r'["\']([^"\']*)["\']',
-            'number': r'\b\d+(\.\d+)?\b'
-        }
-
-    def highlight_syntax(self):
-        """Apply syntax highlighting to the entire text"""
-        # Remove all existing tags
-        for tag in ['keyword', 'datatype', 'string', 'comment', 'number', 'division', 'section']:
-            self.text_area.tag_remove(tag, '1.0', 'end')
-
-        content = self.text_area.get('1.0', 'end')
-        patterns = self.get_cobol_patterns()
-
-        # Apply syntax highlighting for each pattern type
-        for tag_name, pattern in patterns.items():
-            for match in re.finditer(pattern, content, re.MULTILINE | re.IGNORECASE):
-                start_index = f"1.0 + {match.start()} chars"
-                end_index = f"1.0 + {match.end()} chars"
-                self.text_area.tag_add(tag_name, start_index, end_index)
-
-        # Update line numbers
-        self.update_line_numbers()
-
-    def update_line_numbers(self):
-        """Update line numbers display"""
-        self.line_numbers.config(state='normal')
-        self.line_numbers.delete('1.0', 'end')
-
-        line_count = int(self.text_area.index('end-1c').split('.')[0])
-        line_numbers_string = "\n".join(str(i) for i in range(1, line_count + 1))
-        self.line_numbers.insert('1.0', line_numbers_string)
-        self.line_numbers.config(state='disabled')
-
-    def on_key_release(self, event=None):
-        """Handle key release events for syntax highlighting"""
-        self.highlight_syntax()
+    def on_text_changed(self):
+        """Handle text changes - triggers syntax highlighting automatically"""
+        pass
 
     def new_file(self):
         """Create a new file"""
-        if self.text_area.get('1.0', 'end-1c'):
-            if messagebox.askyesno("New File", "Discard current changes?"):
-                self.text_area.delete('1.0', 'end')
+        if self.text_area.toPlainText():
+            reply = QMessageBox.question(self, "New File",
+                                        "Discard current changes?",
+                                        QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.text_area.clear()
                 self.current_file = None
-                self.root.title("COBOL Editor - New File")
+                self.setWindowTitle("COBOL Editor - New File")
         else:
-            self.text_area.delete('1.0', 'end')
+            self.text_area.clear()
             self.current_file = None
-            self.root.title("COBOL Editor - New File")
+            self.setWindowTitle("COBOL Editor - New File")
 
     def open_file(self):
         """Open a file"""
-        file_path = filedialog.askopenfilename(
-            defaultextension=".cbl",
-            filetypes=[("COBOL Files", "*.cbl *.cob *.cobol"), ("All Files", "*.*")]
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open File", "",
+            "COBOL Files (*.cbl *.cob *.cobol);;All Files (*.*)"
         )
 
         if file_path:
             try:
-                with open(file_path, 'r') as file:
+                with open(file_path, 'r', encoding='utf-8') as file:
                     content = file.read()
-                    self.text_area.delete('1.0', 'end')
-                    self.text_area.insert('1.0', content)
+                    self.text_area.setPlainText(content)
                     self.current_file = file_path
-                    self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
-                    self.highlight_syntax()
-                    self.status_bar.configure(text=f"Opened: {file_path}")
+                    self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                    self.status_bar.showMessage(f"Opened: {file_path}")
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
     def save_file(self):
         """Save the current file"""
         if self.current_file:
             try:
-                content = self.text_area.get('1.0', 'end-1c')
-                with open(self.current_file, 'w') as file:
+                content = self.text_area.toPlainText()
+                with open(self.current_file, 'w', encoding='utf-8') as file:
                     file.write(content)
-                self.status_bar.configure(text=f"Saved: {self.current_file}")
+                self.status_bar.showMessage(f"Saved: {self.current_file}")
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to save file:\n{str(e)}")
         else:
             self.save_as_file()
 
     def save_as_file(self):
         """Save the file with a new name"""
-        file_path = filedialog.asksaveasfilename(
-            defaultextension=".cbl",
-            filetypes=[("COBOL Files", "*.cbl"), ("All Files", "*.*")]
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save As", "",
+            "COBOL Files (*.cbl);;All Files (*.*)"
         )
 
         if file_path:
             try:
-                content = self.text_area.get('1.0', 'end-1c')
-                with open(file_path, 'w') as file:
+                content = self.text_area.toPlainText()
+                with open(file_path, 'w', encoding='utf-8') as file:
                     file.write(content)
                 self.current_file = file_path
-                self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
-                self.status_bar.configure(text=f"Saved as: {file_path}")
+                self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                self.status_bar.showMessage(f"Saved as: {file_path}")
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to save file:\n{str(e)}")
+                QMessageBox.critical(self, "Error", f"Failed to save file:\n{str(e)}")
 
     def find_text(self):
         """Open find dialog"""
-        self.search_text = simpledialog.askstring("Find", "Enter text to find:")
-        if self.search_text:
-            self.search_index = "1.0"
+        text, ok = QInputDialog.getText(self, "Find", "Enter text to find:")
+        if ok and text:
+            self.search_text = text
+            self.last_search_position = 0
             self.find_next()
 
     def find_next(self):
         """Find next occurrence of search text"""
-        if not hasattr(self, 'search_text') or not self.search_text:
+        if not self.search_text:
             self.find_text()
             return
 
-        # Remove previous search highlights
-        self.text_area.tag_remove('search', '1.0', 'end')
+        cursor = self.text_area.textCursor()
+        document = self.text_area.document()
 
-        # Search for text
-        pos = self.text_area.search(self.search_text, self.search_index,
-                                     stopindex='end', nocase=True)
+        # Search from current position
+        found_cursor = document.find(self.search_text, cursor,
+                                     QTextDocument.FindCaseSensitively)
 
-        if pos:
-            # Highlight found text
-            end_pos = f"{pos}+{len(self.search_text)}c"
-            self.text_area.tag_add('search', pos, end_pos)
-            self.text_area.see(pos)
-            self.text_area.mark_set('insert', pos)
-            self.search_index = end_pos
-            self.status_bar.configure(text=f"Found: {self.search_text} at {pos}")
+        if not found_cursor.isNull():
+            self.text_area.setTextCursor(found_cursor)
+            self.status_bar.showMessage(f"Found: {self.search_text}")
         else:
             # Wrap around to beginning
-            self.search_index = "1.0"
-            pos = self.text_area.search(self.search_text, self.search_index,
-                                        stopindex='end', nocase=True)
-            if pos:
-                end_pos = f"{pos}+{len(self.search_text)}c"
-                self.text_area.tag_add('search', pos, end_pos)
-                self.text_area.see(pos)
-                self.text_area.mark_set('insert', pos)
-                self.search_index = end_pos
-                self.status_bar.configure(text=f"Found: {self.search_text} at {pos} (wrapped)")
+            found_cursor = document.find(self.search_text, 0)
+            if not found_cursor.isNull():
+                self.text_area.setTextCursor(found_cursor)
+                self.status_bar.showMessage(f"Found: {self.search_text} (wrapped)")
             else:
-                messagebox.showinfo("Find", f"Text '{self.search_text}' not found")
-
-    def select_all(self):
-        """Select all text"""
-        self.text_area.tag_add('sel', '1.0', 'end')
+                QMessageBox.information(self, "Find",
+                                       f"Text '{self.search_text}' not found")
 
     def show_about(self):
         """Show about dialog"""
-        messagebox.showinfo("About",
-                           "COBOL Editor\n\n"
-                           "A COBOL editor with syntax highlighting, search,\n"
-                           "multi-file search, and adjustable font size.\n\n"
-                           "Shortcuts:\n"
-                           "Ctrl+N - New File\n"
-                           "Ctrl+O - Open File\n"
-                           "Ctrl+S - Save File\n"
-                           "Ctrl+F - Find\n"
-                           "F3 - Find Next\n"
-                           "Ctrl+Shift+F - Find in Files\n"
-                           "Ctrl++ - Increase Font Size\n"
-                           "Ctrl+- - Decrease Font Size")
-
-    def handle_increase_font(self, event=None):
-        """Handle increase font size event"""
-        print(f"DEBUG: Increase font called, current size: {self.font_size}")
-        self.increase_font_size()
-        print(f"DEBUG: New font size: {self.font_size}")
-        return "break"
-
-    def handle_decrease_font(self, event=None):
-        """Handle decrease font size event"""
-        print(f"DEBUG: Decrease font called, current size: {self.font_size}")
-        self.decrease_font_size()
-        print(f"DEBUG: New font size: {self.font_size}")
-        return "break"
+        QMessageBox.information(self, "About",
+            "COBOL Editor\n\n"
+            "A COBOL editor with syntax highlighting, search,\n"
+            "multi-file search, and adjustable font size.\n\n"
+            "Shortcuts:\n"
+            "Ctrl+N - New File\n"
+            "Ctrl+O - Open File\n"
+            "Ctrl+S - Save File\n"
+            "Ctrl+F - Find\n"
+            "F3 - Find Next\n"
+            "Ctrl+Shift+F - Find in Files\n"
+            "Ctrl++ - Increase Font Size\n"
+            "Ctrl+- - Decrease Font Size"
+        )
 
     def increase_font_size(self):
         """Increase font size"""
-        if self.font_size < 72:  # Maximum font size
+        if self.font_size < 72:
             self.font_size += 2
             self.update_font()
-            self.status_bar.configure(text=f"Font size: {self.font_size}")
+            self.status_bar.showMessage(f"Font size: {self.font_size}")
 
     def decrease_font_size(self):
         """Decrease font size"""
-        if self.font_size > 6:  # Minimum font size
+        if self.font_size > 6:
             self.font_size -= 2
             self.update_font()
-            self.status_bar.configure(text=f"Font size: {self.font_size}")
+            self.status_bar.showMessage(f"Font size: {self.font_size}")
 
     def reset_font_size(self):
         """Reset font size to default"""
         self.font_size = 18
         self.update_font()
-        self.status_bar.configure(text=f"Font size reset to: {self.font_size}")
+        self.status_bar.showMessage(f"Font size reset to: {self.font_size}")
 
     def update_font(self):
-        """Update font for all text widgets"""
-        # Update main text area font
-        self.text_area.config(font=(self.font_family, self.font_size))
-        # Update line numbers font
-        self.line_numbers.config(font=(self.font_family, self.font_size))
-        # Reconfigure tags with new font size
-        self.configure_tags()
-        # Reapply syntax highlighting
-        self.highlight_syntax()
+        """Update font for text area"""
+        font = QFont(self.font_family, self.font_size)
+        font.setStyleHint(QFont.Monospace)
+        self.text_area.setFont(font)
+        self.text_area.update_line_number_area_width(0)
 
     def apply_theme(self, theme_name):
         """Apply a color theme to the editor"""
         if theme_name not in self.themes:
-            messagebox.showerror("Error", f"Theme '{theme_name}' not found")
+            QMessageBox.critical(self, "Error", f"Theme '{theme_name}' not found")
             return
 
         self.current_theme = theme_name
         theme = self.themes[theme_name]
 
         # Update text area colors
-        self.text_area.config(
-            background=theme['bg'],
-            foreground=theme['fg'],
-            insertbackground=theme['fg']
-        )
+        palette = self.text_area.palette()
+        palette.setColor(QPalette.Base, QColor(theme['bg']))
+        palette.setColor(QPalette.Text, QColor(theme['fg']))
+        self.text_area.setPalette(palette)
 
-        # Update line numbers colors
-        self.line_numbers.config(
-            background=theme['line_numbers_bg'],
-            foreground=theme['line_numbers_fg']
-        )
+        # Update line number area colors
+        line_palette = self.text_area.line_number_area.palette()
+        line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.text_area.line_number_area.setPalette(line_palette)
 
-        # Update tree frame colors
-        self.tree_frame.configure(fg_color=theme['line_numbers_bg'])
-        self.tree_label.configure(
-            fg_color=theme['line_numbers_bg'],
-            text_color=theme['line_numbers_fg']
-        )
+        # Update tree colors
+        tree_palette = self.file_tree.palette()
+        tree_palette.setColor(QPalette.Base, QColor(theme['bg']))
+        tree_palette.setColor(QPalette.Text, QColor(theme['fg']))
+        self.file_tree.setPalette(tree_palette)
 
-        # Update menu colors to match the new theme
-        self.configure_menu_colors()
+        # Update tree label colors
+        label_palette = self.tree_label.palette()
+        label_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.tree_label.setPalette(label_palette)
+        self.tree_label.setAutoFillBackground(True)
 
-        # Update ttk widget colors to match the new theme
-        self.configure_ttk_colors()
+        # Update syntax highlighter
+        self.highlighter.update_theme(theme)
 
-        # Reconfigure tags with new theme colors
-        self.configure_tags()
+        # Force redraw
+        self.text_area.line_number_area.update()
 
-        # Reapply syntax highlighting to update colors
-        self.highlight_syntax()
-
-        # Update status bar
-        self.status_bar.configure(text=f"Theme changed to: {theme_name}")
-
-    def apply_ttk_theme(self, theme_name):
-        """Apply a ttk theme to the editor widgets"""
-        try:
-            self.style.theme_use(theme_name)
-            self.current_ttk_theme = theme_name
-
-            # Configure ttk widget colors to match the current color theme
-            self.configure_ttk_colors()
-
-            self.status_bar.configure(text=f"TTK Theme changed to: {theme_name}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to apply TTK theme '{theme_name}':\n{str(e)}")
-
-    def configure_ttk_colors(self):
-        """Configure ttk widget colors to match the current color theme"""
-        theme = self.themes[self.current_theme]
-
-        # Configure Treeview colors
-        self.style.configure("Treeview",
-                            background=theme['bg'],
-                            foreground=theme['fg'],
-                            fieldbackground=theme['bg'])
-        self.style.map('Treeview',
-                      background=[('selected', theme['search_bg'])],
-                      foreground=[('selected', theme['search_fg'])])
-
-        # Configure Treeview heading
-        self.style.configure("Treeview.Heading",
-                            background=theme['line_numbers_bg'],
-                            foreground=theme['line_numbers_fg'])
-
-        # Configure Scrollbar colors
-        self.style.configure("Vertical.TScrollbar",
-                            background=theme['line_numbers_bg'],
-                            troughcolor=theme['bg'],
-                            bordercolor=theme['line_numbers_bg'],
-                            arrowcolor=theme['fg'])
-
-    def configure_menu_colors(self):
-        """Configure menu colors to match the current color theme"""
-        theme = self.themes[self.current_theme]
-
-        # List of all menus to configure
-        menus = [
-            self.menubar,
-            self.file_menu,
-            self.edit_menu,
-            self.view_menu,
-            self.theme_menu,
-            self.ttk_theme_menu,
-            self.help_menu
-        ]
-
-        # Configure colors for all menus
-        for menu in menus:
-            menu.config(
-                bg=theme['bg'],
-                fg=theme['fg'],
-                activebackground=theme['search_bg'],
-                activeforeground=theme['search_fg']
-            )
+        self.status_bar.showMessage(f"Theme changed to: {theme_name}")
 
     def find_in_files(self):
         """Open multi-file search dialog"""
-        # Ask for directory
-        directory = filedialog.askdirectory(title="Select directory to search in")
+        directory = QFileDialog.getExistingDirectory(self, "Select directory to search in")
         if not directory:
             return
 
-        # Ask for search text
-        search_text = simpledialog.askstring("Find in Files", "Enter text to find:")
-        if not search_text:
+        text, ok = QInputDialog.getText(self, "Find in Files", "Enter text to find:")
+        if not ok or not text:
             return
 
         # Search in files
@@ -646,109 +660,97 @@ class CobolEditor:
                     try:
                         with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                             for line_num, line in enumerate(f, 1):
-                                if search_text.lower() in line.lower():
+                                if text.lower() in line.lower():
                                     results.append((file_path, line_num, line.strip()))
-                    except Exception as e:
+                    except Exception:
                         continue
 
         # Display results
         if results:
-            self.show_search_results(search_text, results)
+            self.show_search_results(text, results)
         else:
-            messagebox.showinfo("Find in Files", f"No matches found for '{search_text}'")
+            QMessageBox.information(self, "Find in Files",
+                                   f"No matches found for '{text}'")
 
     def show_search_results(self, search_text, results):
         """Show search results in a new window"""
-        results_window = ctk.CTkToplevel(self.root)
-        results_window.title(f"Search Results: '{search_text}' ({len(results)} matches)")
-        results_window.geometry("800x500")
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"Search Results: '{search_text}' ({len(results)} matches)")
+        dialog.setGeometry(100, 100, 800, 500)
 
-        # Create frame for results
-        frame = ctk.CTkFrame(results_window)
-        frame.pack(fill=tk.BOTH, expand=True)
+        layout = QVBoxLayout(dialog)
 
-        # Add scrollbar
-        scrollbar = ctk.CTkScrollbar(frame)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-
-        # Create listbox for results (keep as tk.Listbox since CTk doesn't have a direct replacement)
-        listbox = tk.Listbox(frame, yscrollcommand=scrollbar.set, font=(self.font_family, 10))
-        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.configure(command=listbox.yview)
-
-        # Add results to listbox
+        list_widget = QListWidget()
         for file_path, line_num, line_text in results:
             display_text = f"{file_path}:{line_num}: {line_text}"
-            listbox.insert(tk.END, display_text)
+            list_widget.addItem(display_text)
 
-        # Bind double-click to open file
-        def on_double_click(event):
-            selection = listbox.curselection()
-            if selection:
-                index = selection[0]
-                file_path, line_num, _ = results[index]
-                self.open_file_at_line(file_path, line_num)
-                results_window.destroy()
+        # Connect double-click
+        def on_item_double_clicked(item):
+            index = list_widget.row(item)
+            file_path, line_num, _ = results[index]
+            self.open_file_at_line(file_path, line_num)
+            dialog.close()
 
-        listbox.bind('<Double-Button-1>', on_double_click)
+        list_widget.itemDoubleClicked.connect(on_item_double_clicked)
+        layout.addWidget(list_widget)
 
-        # Add status label
-        status_label = ctk.CTkLabel(results_window, text=f"Found {len(results)} matches. Double-click to open file.",
-                               anchor=tk.W)
-        status_label.pack(side=tk.BOTTOM, fill=tk.X)
+        status_label = QLabel(f"Found {len(results)} matches. Double-click to open file.")
+        layout.addWidget(status_label)
+
+        dialog.exec()
 
     def open_file_at_line(self, file_path, line_num):
         """Open a file and jump to specific line"""
         try:
-            with open(file_path, 'r') as file:
+            with open(file_path, 'r', encoding='utf-8') as file:
                 content = file.read()
-                self.text_area.delete('1.0', 'end')
-                self.text_area.insert('1.0', content)
+                self.text_area.setPlainText(content)
                 self.current_file = file_path
-                self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
-                self.highlight_syntax()
+                self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
 
                 # Jump to line
-                self.text_area.mark_set('insert', f"{line_num}.0")
-                self.text_area.see(f"{line_num}.0")
+                cursor = self.text_area.textCursor()
+                cursor.movePosition(QTextCursor.Start)
+                cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
+                self.text_area.setTextCursor(cursor)
+                self.text_area.centerCursor()
 
-                self.status_bar.configure(text=f"Opened: {file_path} at line {line_num}")
+                self.status_bar.showMessage(f"Opened: {file_path} at line {line_num}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
     def select_working_directory(self):
         """Select a working directory to browse"""
-        directory = filedialog.askdirectory(title="Select Working Directory")
+        directory = QFileDialog.getExistingDirectory(self, "Select Working Directory")
         if directory:
             self.working_directory = directory
             self.populate_tree()
-            self.status_bar.configure(text=f"Working directory: {directory}")
+            self.status_bar.showMessage(f"Working directory: {directory}")
 
     def populate_tree(self):
         """Populate the tree view with files and directories"""
-        # Clear existing items
-        self.file_tree.delete(*self.file_tree.get_children())
+        self.file_tree.clear()
 
         if not self.working_directory or not os.path.exists(self.working_directory):
             return
 
         # Add root directory
         root_name = os.path.basename(self.working_directory) or self.working_directory
-        root_node = self.file_tree.insert('', 'end', text=root_name,
-                                          values=[self.working_directory], open=True)
+        root_item = QTreeWidgetItem(self.file_tree, [root_name])
+        root_item.setData(0, Qt.UserRole, self.working_directory)
 
         # Populate tree recursively
-        self.add_tree_nodes(root_node, self.working_directory)
+        self.add_tree_nodes(root_item, self.working_directory)
+        root_item.setExpanded(True)
 
-    def add_tree_nodes(self, parent, path):
+    def add_tree_nodes(self, parent_item, path):
         """Recursively add nodes to the tree"""
         try:
             items = os.listdir(path)
-            # Sort: directories first, then files
             items.sort(key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
 
             for item in items:
-                # Skip hidden files and directories
                 if item.startswith('.'):
                     continue
 
@@ -756,60 +758,40 @@ class CobolEditor:
 
                 if os.path.isdir(full_path):
                     # Add directory
-                    node = self.file_tree.insert(parent, 'end', text=f"📁 {item}",
-                                                values=[full_path])
-                    # Add subdirectories and files
-                    self.add_tree_nodes(node, full_path)
+                    tree_item = QTreeWidgetItem(parent_item, [f"📁 {item}"])
+                    tree_item.setData(0, Qt.UserRole, full_path)
+                    self.add_tree_nodes(tree_item, full_path)
                 else:
-                    # Add file with appropriate icon
+                    # Add file
                     if item.endswith(('.cbl', '.cob', '.cobol')):
                         icon = "📄"
                     else:
                         icon = "📋"
-                    self.file_tree.insert(parent, 'end', text=f"{icon} {item}",
-                                        values=[full_path])
+                    tree_item = QTreeWidgetItem(parent_item, [f"{icon} {item}"])
+                    tree_item.setData(0, Qt.UserRole, full_path)
         except PermissionError:
-            # Skip directories we don't have permission to read
             pass
 
-    def on_tree_double_click(self, event):
+    def on_tree_double_click(self, item, column):
         """Handle double-click on tree item"""
-        item = self.file_tree.selection()
-        if item:
-            values = self.file_tree.item(item[0], 'values')
-            if values:
-                file_path = values[0]
-                if os.path.isfile(file_path):
-                    # Open the file
-                    try:
-                        with open(file_path, 'r') as file:
-                            content = file.read()
-                            self.text_area.delete('1.0', 'end')
-                            self.text_area.insert('1.0', content)
-                            self.current_file = file_path
-                            self.root.title(f"COBOL Editor - {os.path.basename(file_path)}")
-                            self.highlight_syntax()
-                            self.status_bar.configure(text=f"Opened: {file_path}")
-                    except Exception as e:
-                        messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
-
-    def exit_editor(self):
-        """Exit the editor"""
-        if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
-            self.root.quit()
+        file_path = item.data(0, Qt.UserRole)
+        if file_path and os.path.isfile(file_path):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    content = file.read()
+                    self.text_area.setPlainText(content)
+                    self.current_file = file_path
+                    self.setWindowTitle(f"COBOL Editor - {os.path.basename(file_path)}")
+                    self.status_bar.showMessage(f"Opened: {file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
 
 def main():
-    root = ctk.CTk()
-    editor = CobolEditor(root)
-
-    # Bind F3 for Find Next
-    root.bind('<F3>', lambda e: editor.find_next())
-
-    # Bind Ctrl+Shift+F for Find in Files
-    root.bind('<Control-Shift-F>', lambda e: editor.find_in_files())
-
-    root.mainloop()
+    app = QApplication(sys.argv)
+    editor = CobolEditor()
+    editor.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":

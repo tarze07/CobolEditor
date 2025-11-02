@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidget,
     QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu
 )
-from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot
+from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings
 from PySide6.QtGui import (
     QColor, QPainter, QTextFormat, QFont, QTextCharFormat,
     QSyntaxHighlighter, QTextCursor, QTextDocument, QKeySequence,
@@ -231,6 +231,11 @@ class CobolEditor(QMainWindow):
         self.working_directory = None
         self.search_text = ""
         self.last_search_position = 0
+
+        # Initialize settings
+        self.settings = QSettings('CobolEditor', 'CobolEditor')
+
+        # Default values
         self.font_size = 18
         self.font_family = 'Consolas'
         self.current_theme = 'Light'
@@ -300,6 +305,7 @@ class CobolEditor(QMainWindow):
         }
 
         self.init_ui()
+        self.load_settings()
         self.apply_theme(self.current_theme)
 
     def init_ui(self):
@@ -453,6 +459,71 @@ class CobolEditor(QMainWindow):
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
 
+    def load_settings(self):
+        """Load user settings from QSettings"""
+        # Load font settings
+        self.font_size = self.settings.value('font_size', 18, type=int)
+        self.font_family = self.settings.value('font_family', 'Consolas', type=str)
+
+        # Load theme
+        self.current_theme = self.settings.value('theme', 'Light', type=str)
+
+        # Load working directory
+        working_dir = self.settings.value('working_directory', '', type=str)
+        if working_dir and os.path.exists(working_dir):
+            self.working_directory = working_dir
+            # Only populate tree if file_tree widget exists
+            if hasattr(self, 'file_tree'):
+                self.populate_tree()
+
+        # Load window geometry
+        geometry = self.settings.value('window_geometry')
+        if geometry:
+            self.restoreGeometry(geometry)
+        else:
+            self.setGeometry(100, 100, 900, 700)
+
+        # Load splitter state
+        splitter_state = self.settings.value('splitter_state')
+        if splitter_state:
+            # Find the splitter widget
+            splitter = self.centralWidget().findChild(QSplitter)
+            if splitter:
+                splitter.restoreState(splitter_state)
+
+        # Apply font settings if text_area exists
+        if hasattr(self, 'text_area'):
+            self.update_font()
+
+    def save_settings(self):
+        """Save user settings to QSettings"""
+        # Save font settings
+        self.settings.setValue('font_size', self.font_size)
+        self.settings.setValue('font_family', self.font_family)
+
+        # Save theme
+        self.settings.setValue('theme', self.current_theme)
+
+        # Save working directory
+        if self.working_directory:
+            self.settings.setValue('working_directory', self.working_directory)
+
+        # Save window geometry
+        self.settings.setValue('window_geometry', self.saveGeometry())
+
+        # Save splitter state
+        splitter = self.centralWidget().findChild(QSplitter)
+        if splitter:
+            self.settings.setValue('splitter_state', splitter.saveState())
+
+        # Ensure settings are written to disk
+        self.settings.sync()
+
+    def closeEvent(self, event):
+        """Handle window close event"""
+        self.save_settings()
+        event.accept()
+
     def on_text_changed(self):
         """Handle text changes - triggers syntax highlighting automatically"""
         pass
@@ -577,6 +648,7 @@ class CobolEditor(QMainWindow):
         if self.font_size < 72:
             self.font_size += 2
             self.update_font()
+            self.save_settings()
             self.status_bar.showMessage(f"Font size: {self.font_size}")
 
     def decrease_font_size(self):
@@ -584,12 +656,14 @@ class CobolEditor(QMainWindow):
         if self.font_size > 6:
             self.font_size -= 2
             self.update_font()
+            self.save_settings()
             self.status_bar.showMessage(f"Font size: {self.font_size}")
 
     def reset_font_size(self):
         """Reset font size to default"""
         self.font_size = 18
         self.update_font()
+        self.save_settings()
         self.status_bar.showMessage(f"Font size reset to: {self.font_size}")
 
     def update_font(self):
@@ -639,6 +713,7 @@ class CobolEditor(QMainWindow):
         # Force redraw
         self.text_area.line_number_area.update()
 
+        self.save_settings()
         self.status_bar.showMessage(f"Theme changed to: {theme_name}")
 
     def find_in_files(self):
@@ -726,6 +801,7 @@ class CobolEditor(QMainWindow):
         if directory:
             self.working_directory = directory
             self.populate_tree()
+            self.save_settings()
             self.status_bar.showMessage(f"Working directory: {directory}")
 
     def populate_tree(self):

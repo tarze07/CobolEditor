@@ -1065,7 +1065,7 @@ class CobolEditor(QMainWindow):
         # Search status label
         self.search_status_label = QLabel("Type at least 2 characters to start searching...")
         self.search_status_label.setMinimumHeight(20)
-        self.search_status_label.setStyleSheet("padding: 3px; background-color: #f0f0f0;")
+        self.search_status_label.setStyleSheet("padding: 3px; background-color: #f0f0f0; color: #000000;")
         search_panel_layout.addWidget(self.search_status_label)
 
         # File scanning label (shows currently scanned file)

@@ -549,11 +549,12 @@ class CodeEditor(QPlainTextEdit):
 
 
 class CobolEditor(QMainWindow):
-    def __init__(self):
+    def __init__(self, file_to_open=None):
         super().__init__()
         self.working_directory = None
         self.search_text = ""
         self.last_search_position = 0
+        self.file_to_open = file_to_open
 
         # Track open files: {tab_index: {'path': file_path, 'modified': bool}}
         self.open_files = {}
@@ -656,6 +657,10 @@ class CobolEditor(QMainWindow):
         self.init_ui()
         self.load_settings()
         self.apply_theme(self.current_theme)
+
+        # Open file if specified via command line
+        if self.file_to_open:
+            self.open_file_from_path(self.file_to_open)
 
     def get_highlighter_for_file(self, file_path):
         """Get the appropriate syntax highlighter class for a file based on its extension"""
@@ -1101,6 +1106,35 @@ class CobolEditor(QMainWindow):
                     self.status_bar.showMessage(f"Opened: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
+
+    def open_file_from_path(self, file_path):
+        """Open a file from a given path in a new tab or switch to existing tab"""
+        if not file_path:
+            return
+
+        # Check if file is already open
+        for tab_index, file_info in self.open_files.items():
+            if file_info.get('path') == file_path:
+                # File already open, switch to that tab
+                self.tab_widget.setCurrentIndex(tab_index)
+                self.status_bar.showMessage(f"Switched to: {file_path}")
+                return
+
+        # Open file in new tab
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+                # Close the default empty tab if it's still empty
+                if self.tab_widget.count() == 1:
+                    first_editor = self.tab_widget.widget(0)
+                    file_info = self.open_files.get(0, {})
+                    if not file_info.get('path') and not first_editor.toPlainText():
+                        self.tab_widget.removeTab(0)
+                        self.open_files.clear()
+                self.create_new_tab(file_path, content)
+                self.status_bar.showMessage(f"Opened: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
     def save_file(self):
         """Save the current file in current tab"""
@@ -1552,7 +1586,20 @@ class CobolEditor(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    editor = CobolEditor()
+
+    # Parse command-line arguments for file to open
+    file_to_open = None
+    if len(sys.argv) > 1:
+        file_to_open = sys.argv[1]
+        # Check if file exists
+        if not os.path.exists(file_to_open):
+            print(f"Warning: File '{file_to_open}' does not exist")
+            file_to_open = None
+        elif not os.path.isfile(file_to_open):
+            print(f"Warning: '{file_to_open}' is not a file")
+            file_to_open = None
+
+    editor = CobolEditor(file_to_open=file_to_open)
     editor.show()
     sys.exit(app.exec())
 

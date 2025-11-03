@@ -1118,6 +1118,7 @@ class CobolEditor(QMainWindow):
         self.file_tree.setMaximumWidth(300)
         self.file_tree.setMinimumWidth(150)
         self.file_tree.itemDoubleClicked.connect(self.on_tree_double_click)
+        self.file_tree.itemExpanded.connect(self.on_tree_item_expanded)
         tree_layout.addWidget(self.file_tree)
 
         splitter.addWidget(tree_container)
@@ -2109,12 +2110,18 @@ class CobolEditor(QMainWindow):
         root_item = QTreeWidgetItem(self.file_tree, [root_name])
         root_item.setData(0, Qt.UserRole, self.working_directory)
 
-        # Populate tree recursively
-        self.add_tree_nodes(root_item, self.working_directory)
+        # Populate tree with lazy loading (only first level)
+        self.add_tree_nodes(root_item, self.working_directory, lazy=True)
         root_item.setExpanded(True)
 
-    def add_tree_nodes(self, parent_item, path):
-        """Recursively add nodes to the tree"""
+    def add_tree_nodes(self, parent_item, path, lazy=False):
+        """Add nodes to the tree (with optional lazy loading)
+
+        Args:
+            parent_item: The parent tree widget item
+            path: The directory path to scan
+            lazy: If True, only load direct children (no recursion)
+        """
         try:
             items = os.listdir(path)
             items.sort(key=lambda x: (not os.path.isdir(os.path.join(path, x)), x.lower()))
@@ -2129,7 +2136,15 @@ class CobolEditor(QMainWindow):
                     # Add directory
                     tree_item = QTreeWidgetItem(parent_item, [f"📁 {item}"])
                     tree_item.setData(0, Qt.UserRole, full_path)
-                    self.add_tree_nodes(tree_item, full_path)
+
+                    # Add a dummy child to make the directory expandable
+                    # The real children will be loaded when expanded
+                    if lazy:
+                        dummy = QTreeWidgetItem(tree_item, ["Loading..."])
+                        dummy.setData(0, Qt.UserRole, None)  # Mark as dummy
+                    else:
+                        # Non-lazy mode: recursively load children
+                        self.add_tree_nodes(tree_item, full_path, lazy=False)
                 else:
                     # Add file
                     if item.endswith(('.cbl', '.cob', '.cobol')):
@@ -2140,6 +2155,25 @@ class CobolEditor(QMainWindow):
                     tree_item.setData(0, Qt.UserRole, full_path)
         except PermissionError:
             pass
+
+    def on_tree_item_expanded(self, item):
+        """Handle tree item expansion - load children on demand (lazy loading)"""
+        dir_path = item.data(0, Qt.UserRole)
+
+        # Skip if not a directory
+        if not dir_path or not os.path.isdir(dir_path):
+            return
+
+        # Check if this directory already has real children loaded
+        # If the first child is a dummy ("Loading..."), we need to load real children
+        if item.childCount() > 0:
+            first_child = item.child(0)
+            # Check if it's a dummy item (has None as UserRole data)
+            if first_child.data(0, Qt.UserRole) is None:
+                # Remove all dummy children
+                item.takeChildren()
+                # Load real children with lazy loading enabled
+                self.add_tree_nodes(item, dir_path, lazy=True)
 
     def on_tree_double_click(self, item, column):
         """Handle double-click on tree item - open file in tab"""

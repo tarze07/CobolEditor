@@ -1065,13 +1065,15 @@ class CobolEditor(QMainWindow):
         # Search status label
         self.search_status_label = QLabel("Type at least 2 characters to start searching...")
         self.search_status_label.setMinimumHeight(20)
-        self.search_status_label.setStyleSheet("padding: 3px; background-color: #f0f0f0; color: #000000;")
+        self.search_status_label.setStyleSheet("padding: 3px;")
+        self.search_status_label.setAutoFillBackground(True)
         search_panel_layout.addWidget(self.search_status_label)
 
         # File scanning label (shows currently scanned file)
         self.file_scanning_label = QLabel("")
         self.file_scanning_label.setMinimumHeight(20)
-        self.file_scanning_label.setStyleSheet("padding: 3px; background-color: #e8f4f8; font-style: italic; color: #555;")
+        self.file_scanning_label.setStyleSheet("padding: 3px; font-style: italic;")
+        self.file_scanning_label.setAutoFillBackground(True)
         self.file_scanning_label.setWordWrap(True)
         self.file_scanning_label.hide()  # Initially hidden
         search_panel_layout.addWidget(self.file_scanning_label)
@@ -1719,6 +1721,18 @@ class CobolEditor(QMainWindow):
         search_label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
         self.search_panel_label.setPalette(search_label_palette)
         self.search_panel_label.setAutoFillBackground(True)
+
+        # Update search status label colors
+        status_label_palette = self.search_status_label.palette()
+        status_label_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        status_label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.search_status_label.setPalette(status_label_palette)
+
+        # Update file scanning label colors
+        scanning_label_palette = self.file_scanning_label.palette()
+        scanning_label_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        scanning_label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.file_scanning_label.setPalette(scanning_label_palette)
 
         self.save_settings()
         self.status_bar.showMessage(f"Theme changed to: {theme_name}")

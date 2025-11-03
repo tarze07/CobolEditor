@@ -1,0 +1,25 @@
+# YAML example
+name: Example Project
+version: 1.0.0
+description: A sample YAML file
+
+# Configuration settings
+enabled: true
+count: 42
+debug: false
+
+settings:
+  verbose: yes
+  timeout: 30.5
+  log-level: info
+
+items:
+  - item1
+  - item2
+  - item3
+
+database:
+  host: localhost
+  port: 5432
+  username: admin
+  password: "secret123"

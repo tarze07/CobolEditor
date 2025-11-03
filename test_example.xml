@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This is an XML comment -->
+<root>
+    <person id="1">
+        <name>John Doe</name>
+        <age>30</age>
+        <email>john@example.com</email>
+    </person>
+    <person id="2">
+        <name>Jane Smith</name>
+        <age>25</age>
+        <email>jane@example.com</email>
+    </person>
+    <settings enabled="true">
+        <option name="debug" value="false"/>
+        <option name="verbose" value="true"/>
+    </settings>
+</root>

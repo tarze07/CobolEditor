@@ -678,6 +678,36 @@ class CobolEditor(QMainWindow):
         # Default to COBOL if no match
         return CobolSyntaxHighlighter
 
+    def read_file_with_encoding(self, file_path):
+        """
+        Try to read a file with multiple encodings.
+        Returns tuple: (content, encoding_used)
+        """
+        encodings = [
+            'utf-8',
+            'utf-8-sig',  # UTF-8 with BOM
+            'latin-1',    # ISO-8859-1
+            'cp1252',     # Windows-1252
+            'cp1250',     # Polish/Central European
+            'iso-8859-2', # Latin-2 (Central European)
+        ]
+
+        for encoding in encodings:
+            try:
+                with open(file_path, 'r', encoding=encoding) as file:
+                    content = file.read()
+                    return content, encoding
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        # If all encodings fail, try with error handling
+        try:
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
+                content = file.read()
+                return content, 'utf-8 (with replacements)'
+        except Exception as e:
+            raise Exception(f"Could not read file with any encoding: {str(e)}")
+
     def init_ui(self):
         """Initialize the user interface"""
         self.setWindowTitle("COBOL Editor")
@@ -1100,10 +1130,9 @@ class CobolEditor(QMainWindow):
 
             # Open file in new tab
             try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                    self.create_new_tab(file_path, content)
-                    self.status_bar.showMessage(f"Opened: {file_path}")
+                content, encoding = self.read_file_with_encoding(file_path)
+                self.create_new_tab(file_path, content)
+                self.status_bar.showMessage(f"Opened: {file_path} (encoding: {encoding})")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
@@ -1122,17 +1151,16 @@ class CobolEditor(QMainWindow):
 
         # Open file in new tab
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                # Close the default empty tab if it's still empty
-                if self.tab_widget.count() == 1:
-                    first_editor = self.tab_widget.widget(0)
-                    file_info = self.open_files.get(0, {})
-                    if not file_info.get('path') and not first_editor.toPlainText():
-                        self.tab_widget.removeTab(0)
-                        self.open_files.clear()
-                self.create_new_tab(file_path, content)
-                self.status_bar.showMessage(f"Opened: {file_path}")
+            content, encoding = self.read_file_with_encoding(file_path)
+            # Close the default empty tab if it's still empty
+            if self.tab_widget.count() == 1:
+                first_editor = self.tab_widget.widget(0)
+                file_info = self.open_files.get(0, {})
+                if not file_info.get('path') and not first_editor.toPlainText():
+                    self.tab_widget.removeTab(0)
+                    self.open_files.clear()
+            self.create_new_tab(file_path, content)
+            self.status_bar.showMessage(f"Opened: {file_path} (encoding: {encoding})")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
@@ -1492,20 +1520,19 @@ class CobolEditor(QMainWindow):
 
         # Open file in new tab
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                content = file.read()
-                tab_index = self.create_new_tab(file_path, content)
+            content, encoding = self.read_file_with_encoding(file_path)
+            tab_index = self.create_new_tab(file_path, content)
 
-                # Jump to line
-                editor = self.get_current_editor()
-                if editor:
-                    cursor = editor.textCursor()
-                    cursor.movePosition(QTextCursor.Start)
-                    cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
-                    editor.setTextCursor(cursor)
-                    editor.centerCursor()
+            # Jump to line
+            editor = self.get_current_editor()
+            if editor:
+                cursor = editor.textCursor()
+                cursor.movePosition(QTextCursor.Start)
+                cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
+                editor.setTextCursor(cursor)
+                editor.centerCursor()
 
-                self.status_bar.showMessage(f"Opened: {file_path} at line {line_num}")
+            self.status_bar.showMessage(f"Opened: {file_path} at line {line_num} (encoding: {encoding})")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
@@ -1576,10 +1603,9 @@ class CobolEditor(QMainWindow):
 
             # Open file in new tab
             try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                    self.create_new_tab(file_path, content)
-                    self.status_bar.showMessage(f"Opened: {file_path}")
+                content, encoding = self.read_file_with_encoding(file_path)
+                self.create_new_tab(file_path, content)
+                self.status_bar.showMessage(f"Opened: {file_path} (encoding: {encoding})")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 

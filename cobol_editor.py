@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu, QTabWidget,
     QPushButton, QLineEdit, QTextEdit, QComboBox, QFormLayout, QDialogButtonBox
 )
-from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings
+from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings, QThread
 from PySide6.QtGui import (
     QColor, QPainter, QTextFormat, QFont, QTextCharFormat,
     QSyntaxHighlighter, QTextCursor, QTextDocument, QKeySequence,
@@ -195,6 +195,136 @@ class LiveSearchDialog(QDialog):
     def get_text(self):
         """Get the entered text"""
         return self.text_input.text()
+
+
+class SearchWorker(QThread):
+    """Worker thread for performing file searches without blocking UI"""
+
+    # Signals
+    result_found = Signal(str, int, str)  # file_path, line_num, line_text
+    progress_update = Signal(int, int)    # files_searched, matches_found
+    search_finished = Signal(int, int)    # total_files, total_matches
+
+    # Directories to skip during search
+    SKIP_DIRS = {
+        '.git', '.svn', '.hg', '.bzr',  # Version control
+        'node_modules', 'bower_components',  # JavaScript
+        '__pycache__', '.pytest_cache', '.tox', 'venv', 'env', '.env',  # Python
+        'bin', 'obj', '.vs', '.vscode',  # Build outputs and IDE
+        'target', 'build', 'dist', '.gradle',  # Build systems
+        '.idea', '.settings', '.eclipse',  # IDEs
+        'vendor', 'packages'  # Dependencies
+    }
+
+    # File extensions to search (text files only)
+    SEARCHABLE_EXTENSIONS = {
+        '.cob', '.cbl', '.cobol', '.cpy',  # COBOL
+        '.cs', '.csharp',  # C#
+        '.js', '.jsx', '.ts', '.tsx',  # JavaScript/TypeScript
+        '.py', '.pyw',  # Python
+        '.xml', '.xaml', '.html', '.htm',  # Markup
+        '.json', '.yaml', '.yml', '.toml',  # Config
+        '.txt', '.md', '.rst',  # Documentation
+        '.c', '.cpp', '.h', '.hpp',  # C/C++
+        '.java', '.kt',  # JVM languages
+        '.go', '.rs', '.rb', '.php',  # Other languages
+        '.sql', '.sh', '.bat', '.ps1',  # Scripts
+        '.css', '.scss', '.sass', '.less',  # Styles
+        '.log', '.ini', '.cfg', '.conf'  # Config/logs
+    }
+
+    def __init__(self, working_directory, search_text):
+        super().__init__()
+        self.working_directory = working_directory
+        self.search_text = search_text.lower()
+        self.cancelled = False
+        self.max_results = 1000
+
+    def cancel(self):
+        """Cancel the search operation"""
+        self.cancelled = True
+
+    def is_searchable_file(self, filename):
+        """Check if file should be searched based on extension"""
+        _, ext = os.path.splitext(filename.lower())
+        return ext in self.SEARCHABLE_EXTENSIONS
+
+    def run(self):
+        """Execute the search in background thread"""
+        match_count = 0
+        file_count = 0
+        batch_results = []
+        batch_size = 50  # Emit results in batches for better UI performance
+
+        try:
+            for root, dirs, files in os.walk(self.working_directory):
+                # Check for cancellation
+                if self.cancelled:
+                    break
+
+                # Skip unwanted directories (modify dirs in-place to skip traversal)
+                dirs[:] = [d for d in dirs if d not in self.SKIP_DIRS and not d.startswith('.')]
+
+                for file in files:
+                    # Check for cancellation
+                    if self.cancelled:
+                        break
+
+                    # Skip non-searchable files
+                    if not self.is_searchable_file(file):
+                        continue
+
+                    file_path = os.path.join(root, file)
+                    file_count += 1
+
+                    try:
+                        # Skip large files (> 10MB)
+                        if os.path.getsize(file_path) > 10 * 1024 * 1024:
+                            continue
+
+                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                            for line_num, line in enumerate(f, 1):
+                                if self.cancelled:
+                                    break
+
+                                if self.search_text in line.lower():
+                                    batch_results.append((file_path, line_num, line.strip()))
+                                    match_count += 1
+
+                                    # Emit batch of results
+                                    if len(batch_results) >= batch_size:
+                                        for result in batch_results:
+                                            self.result_found.emit(*result)
+                                        batch_results.clear()
+                                        self.progress_update.emit(file_count, match_count)
+
+                                    # Stop if max results reached
+                                    if match_count >= self.max_results:
+                                        # Emit remaining results
+                                        for result in batch_results:
+                                            self.result_found.emit(*result)
+                                        self.search_finished.emit(file_count, match_count)
+                                        return
+
+                    except Exception:
+                        # Skip files that can't be read
+                        continue
+
+                    # Periodic progress updates
+                    if file_count % 100 == 0:
+                        self.progress_update.emit(file_count, match_count)
+
+            # Emit any remaining results
+            for result in batch_results:
+                self.result_found.emit(*result)
+
+        except Exception as e:
+            # Handle any unexpected errors gracefully
+            pass
+
+        # Emit final results
+        if not self.cancelled:
+            self.search_finished.emit(file_count, match_count)
 
 
 class SyntaxConfigDialog(QDialog):
@@ -681,6 +811,7 @@ class CobolEditor(QMainWindow):
         self.search_text = ""
         self.last_search_position = 0
         self.file_to_open = file_to_open
+        self.search_worker = None  # Will hold the SearchWorker thread
 
         # Track open files: {tab_index: {'path': file_path, 'modified': bool}}
         self.open_files = {}
@@ -916,6 +1047,14 @@ class CobolEditor(QMainWindow):
         font = QFont("Consolas", 10)
         self.search_input_field.setFont(font)
         search_input_layout.addWidget(self.search_input_field)
+
+        # Cancel search button
+        self.cancel_search_button = QPushButton("Cancel")
+        self.cancel_search_button.setMaximumWidth(80)
+        self.cancel_search_button.setMinimumHeight(30)
+        self.cancel_search_button.setEnabled(False)  # Disabled until search starts
+        self.cancel_search_button.clicked.connect(self.cancel_search)
+        search_input_layout.addWidget(self.cancel_search_button)
 
         search_panel_layout.addLayout(search_input_layout)
 
@@ -1624,45 +1763,72 @@ class CobolEditor(QMainWindow):
         self.perform_live_search(text)
 
     def perform_live_search(self, text):
-        """Perform live search in working directory"""
+        """Perform live search in working directory using background thread"""
         if not self.working_directory or not os.path.exists(self.working_directory):
             self.search_status_label.setText("No working directory set. Use File > Select Working Directory")
             self.search_results_list.clear()
             self.current_search_results = []
             return
 
+        # Cancel any existing search
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.search_worker.wait()
+
+        # Clear previous results
         self.search_status_label.setText("Searching...")
         self.search_results_list.clear()
         self.current_search_results = []
 
-        # Search in files
-        match_count = 0
-        file_count = 0
-        for root, dirs, files in os.walk(self.working_directory):
-            for file in files:
-                file_path = os.path.join(root, file)
-                file_count += 1
-                try:
-                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        for line_num, line in enumerate(f, 1):
-                            if text.lower() in line.lower():
-                                self.current_search_results.append((file_path, line_num, line.strip()))
-                                display_text = f"{file_path}:{line_num}: {line.strip()}"
-                                self.search_results_list.addItem(display_text)
-                                match_count += 1
+        # Enable cancel button
+        self.cancel_search_button.setEnabled(True)
 
-                                # Limit results to prevent UI slowdown
-                                if match_count >= 1000:
-                                    self.search_status_label.setText(f"Found 1000+ matches (showing first 1000). Searched {file_count} files.")
-                                    return
-                except Exception:
-                    continue
+        # Create and start new search worker
+        self.search_worker = SearchWorker(self.working_directory, text)
 
-        # Update status
-        if match_count == 0:
-            self.search_status_label.setText(f"No matches found. Searched {file_count} files in: {self.working_directory}")
+        # Connect signals
+        self.search_worker.result_found.connect(self.on_search_result_found)
+        self.search_worker.progress_update.connect(self.on_search_progress_update)
+        self.search_worker.search_finished.connect(self.on_search_finished)
+
+        # Start the search in background
+        self.search_worker.start()
+
+    def cancel_search(self):
+        """Cancel the current search operation"""
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.search_status_label.setText("Search cancelled by user")
+            self.cancel_search_button.setEnabled(False)
+
+    def on_search_result_found(self, file_path, line_num, line_text):
+        """Handle individual search result from worker thread"""
+        self.current_search_results.append((file_path, line_num, line_text))
+        display_text = f"{file_path}:{line_num}: {line_text}"
+        self.search_results_list.addItem(display_text)
+
+    def on_search_progress_update(self, files_searched, matches_found):
+        """Handle progress update from worker thread"""
+        self.search_status_label.setText(
+            f"Searching... Found {matches_found} matches in {files_searched} files"
+        )
+
+    def on_search_finished(self, total_files, total_matches):
+        """Handle search completion from worker thread"""
+        self.cancel_search_button.setEnabled(False)
+
+        if total_matches == 0:
+            self.search_status_label.setText(
+                f"No matches found. Searched {total_files} files in: {self.working_directory}"
+            )
+        elif total_matches >= 1000:
+            self.search_status_label.setText(
+                f"Found 1000+ matches (showing first 1000). Searched {total_files} files. Double-click to open."
+            )
         else:
-            self.search_status_label.setText(f"Found {match_count} matches in {file_count} files. Double-click to open.")
+            self.search_status_label.setText(
+                f"Found {total_matches} matches in {total_files} files. Double-click to open."
+            )
 
     def show_search_results(self, search_text, results):
         """Show search results in embedded panel"""

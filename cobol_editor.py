@@ -369,13 +369,47 @@ class CobolEditor(QMainWindow):
 
         splitter.addWidget(tree_container)
 
+        # Create vertical splitter for editor and search panel
+        vertical_splitter = QSplitter(Qt.Vertical)
+
         # Create tab widget for multiple files
         self.tab_widget = QTabWidget()
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(True)
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
-        splitter.addWidget(self.tab_widget)
+        vertical_splitter.addWidget(self.tab_widget)
+
+        # Create search results panel
+        self.search_panel = QWidget()
+        search_panel_layout = QVBoxLayout(self.search_panel)
+        search_panel_layout.setContentsMargins(0, 0, 0, 0)
+        search_panel_layout.setSpacing(0)
+
+        # Search panel header
+        self.search_panel_label = QLabel("Search Results")
+        self.search_panel_label.setAlignment(Qt.AlignCenter)
+        self.search_panel_label.setMaximumHeight(25)
+        search_panel_layout.addWidget(self.search_panel_label)
+
+        # Search results list
+        self.search_results_list = QListWidget()
+        search_panel_layout.addWidget(self.search_results_list)
+
+        # Search status label
+        self.search_status_label = QLabel("")
+        self.search_status_label.setMaximumHeight(20)
+        search_panel_layout.addWidget(self.search_status_label)
+
+        # Initially hide search panel
+        self.search_panel.hide()
+
+        vertical_splitter.addWidget(self.search_panel)
+
+        # Set initial sizes (give more space to editor)
+        vertical_splitter.setSizes([500, 200])
+
+        splitter.addWidget(vertical_splitter)
 
         # Create initial empty tab
         self.create_new_tab()
@@ -912,6 +946,18 @@ class CobolEditor(QMainWindow):
         self.tree_label.setPalette(label_palette)
         self.tree_label.setAutoFillBackground(True)
 
+        # Update search panel colors
+        search_results_palette = self.search_results_list.palette()
+        search_results_palette.setColor(QPalette.Base, QColor(theme['bg']))
+        search_results_palette.setColor(QPalette.Text, QColor(theme['fg']))
+        self.search_results_list.setPalette(search_results_palette)
+
+        search_label_palette = self.search_panel_label.palette()
+        search_label_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        search_label_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.search_panel_label.setPalette(search_label_palette)
+        self.search_panel_label.setAutoFillBackground(True)
+
         self.save_settings()
         self.status_bar.showMessage(f"Theme changed to: {theme_name}")
 
@@ -929,15 +975,14 @@ class CobolEditor(QMainWindow):
         results = []
         for root, dirs, files in os.walk(directory):
             for file in files:
-                if file.endswith(('.cbl', '.cob', '.cobol')):
-                    file_path = os.path.join(root, file)
-                    try:
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            for line_num, line in enumerate(f, 1):
-                                if text.lower() in line.lower():
-                                    results.append((file_path, line_num, line.strip()))
-                    except Exception:
-                        continue
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line_num, line in enumerate(f, 1):
+                            if text.lower() in line.lower():
+                                results.append((file_path, line_num, line.strip()))
+                except Exception:
+                    continue
 
         # Display results
         if results:
@@ -960,15 +1005,14 @@ class CobolEditor(QMainWindow):
         results = []
         for root, dirs, files in os.walk(self.working_directory):
             for file in files:
-                if file.endswith(('.cbl', '.cob', '.cobol')):
-                    file_path = os.path.join(root, file)
-                    try:
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            for line_num, line in enumerate(f, 1):
-                                if text.lower() in line.lower():
-                                    results.append((file_path, line_num, line.strip()))
-                    except Exception:
-                        continue
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line_num, line in enumerate(f, 1):
+                            if text.lower() in line.lower():
+                                results.append((file_path, line_num, line.strip()))
+                except Exception:
+                    continue
 
         # Display results
         if results:
@@ -978,32 +1022,38 @@ class CobolEditor(QMainWindow):
                                    f"No matches found for '{text}' in working directory")
 
     def show_search_results(self, search_text, results):
-        """Show search results in a new window"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Search Results: '{search_text}' ({len(results)} matches)")
-        dialog.setGeometry(100, 100, 800, 500)
+        """Show search results in embedded panel"""
+        # Store results for double-click handler
+        self.current_search_results = results
 
-        layout = QVBoxLayout(dialog)
+        # Update panel label
+        self.search_panel_label.setText(f"Search Results: '{search_text}' ({len(results)} matches)")
 
-        list_widget = QListWidget()
+        # Clear and populate results list
+        self.search_results_list.clear()
         for file_path, line_num, line_text in results:
             display_text = f"{file_path}:{line_num}: {line_text}"
-            list_widget.addItem(display_text)
+            self.search_results_list.addItem(display_text)
 
-        # Connect double-click
-        def on_item_double_clicked(item):
-            index = list_widget.row(item)
-            file_path, line_num, _ = results[index]
+        # Update status label
+        self.search_status_label.setText(f"Found {len(results)} matches. Double-click to open file.")
+
+        # Show the search panel
+        self.search_panel.show()
+
+        # Connect double-click handler (disconnect first to avoid multiple connections)
+        try:
+            self.search_results_list.itemDoubleClicked.disconnect()
+        except:
+            pass
+        self.search_results_list.itemDoubleClicked.connect(self.on_search_result_double_clicked)
+
+    def on_search_result_double_clicked(self, item):
+        """Handle double-click on search result"""
+        index = self.search_results_list.row(item)
+        if hasattr(self, 'current_search_results') and index < len(self.current_search_results):
+            file_path, line_num, _ = self.current_search_results[index]
             self.open_file_at_line(file_path, line_num)
-            dialog.close()
-
-        list_widget.itemDoubleClicked.connect(on_item_double_clicked)
-        layout.addWidget(list_widget)
-
-        status_label = QLabel(f"Found {len(results)} matches. Double-click to open file.")
-        layout.addWidget(status_label)
-
-        dialog.exec()
 
     def open_file_at_line(self, file_path, line_num):
         """Open a file in a tab and jump to specific line"""

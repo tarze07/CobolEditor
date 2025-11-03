@@ -1,0 +1,18 @@
+{
+  "name": "Example Project",
+  "version": "1.0.0",
+  "description": "A sample JSON file",
+  "enabled": true,
+  "count": 42,
+  "settings": {
+    "debug": false,
+    "verbose": true,
+    "timeout": 30.5
+  },
+  "items": [
+    "item1",
+    "item2",
+    "item3"
+  ],
+  "nullable": null
+}

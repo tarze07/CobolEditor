@@ -7,11 +7,13 @@ Migrated to PySide6
 import sys
 import os
 import re
+import json
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLabel, QFrame,
     QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidget,
-    QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu, QTabWidget
+    QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu, QTabWidget,
+    QPushButton, QLineEdit, QTextEdit, QComboBox, QFormLayout, QDialogButtonBox
 )
 from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings
 from PySide6.QtGui import (
@@ -34,8 +36,92 @@ class LineNumberArea(QWidget):
         self.editor.line_number_area_paint_event(event)
 
 
-class CobolSyntaxHighlighter(QSyntaxHighlighter):
-    """Syntax highlighter for COBOL"""
+class SearchDialog(QDialog):
+    """Custom search dialog with larger text input area"""
+    def __init__(self, parent=None, title="Search", label="Enter text to search:"):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(150)
+
+        layout = QVBoxLayout(self)
+
+        # Add label
+        label_widget = QLabel(label)
+        layout.addWidget(label_widget)
+
+        # Add large text input
+        self.text_input = QLineEdit()
+        self.text_input.setMinimumHeight(40)
+        font = QFont("Consolas", 12)
+        self.text_input.setFont(font)
+        layout.addWidget(self.text_input)
+
+        # Add buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        # Set focus to text input
+        self.text_input.setFocus()
+
+    def get_text(self):
+        """Get the entered text"""
+        return self.text_input.text()
+
+
+class SyntaxConfigDialog(QDialog):
+    """Dialog for configuring file extension to syntax highlighter mappings"""
+    def __init__(self, parent=None, current_mappings=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Syntax Highlighting")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+
+        layout = QVBoxLayout(self)
+
+        # Add description
+        desc = QLabel("Configure which file extensions use which syntax highlighter.\n"
+                     "Enter extensions separated by commas (e.g., cs,csharp)")
+        layout.addWidget(desc)
+
+        # Create form for each language
+        form_layout = QFormLayout()
+
+        self.extension_inputs = {}
+        languages = ['COBOL', 'C#', 'JavaScript', 'Python', 'XML', 'JSON', 'YAML']
+
+        for lang in languages:
+            line_edit = QLineEdit()
+            if current_mappings and lang in current_mappings:
+                line_edit.setText(','.join(current_mappings[lang]))
+            self.extension_inputs[lang] = line_edit
+            form_layout.addRow(f"{lang}:", line_edit)
+
+        layout.addLayout(form_layout)
+
+        # Add buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def get_mappings(self):
+        """Get the configured mappings"""
+        mappings = {}
+        for lang, line_edit in self.extension_inputs.items():
+            text = line_edit.text().strip()
+            if text:
+                # Split by comma and clean up
+                extensions = [ext.strip().lstrip('.') for ext in text.split(',') if ext.strip()]
+                if extensions:
+                    mappings[lang] = extensions
+        return mappings
+
+
+class SyntaxHighlighterBase(QSyntaxHighlighter):
+    """Base class for all syntax highlighters"""
     def __init__(self, parent, theme):
         super().__init__(parent)
         self.theme = theme
@@ -48,6 +134,229 @@ class CobolSyntaxHighlighter(QSyntaxHighlighter):
         self.update_highlighting_rules()
         self.rehighlight()
 
+    def update_highlighting_rules(self):
+        """Setup highlighting rules - to be overridden by subclasses"""
+        pass
+
+    def highlightBlock(self, text):
+        """Apply syntax highlighting to the given text block"""
+        for pattern, format in self.highlighting_rules:
+            for match in pattern.finditer(text):
+                start = match.start()
+                length = match.end() - start
+                self.setFormat(start, length, format)
+
+
+class CSharpSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for C#"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Keywords
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            'abstract', 'as', 'base', 'bool', 'break', 'byte', 'case', 'catch', 'char', 'checked',
+            'class', 'const', 'continue', 'decimal', 'default', 'delegate', 'do', 'double', 'else',
+            'enum', 'event', 'explicit', 'extern', 'false', 'finally', 'fixed', 'float', 'for',
+            'foreach', 'goto', 'if', 'implicit', 'in', 'int', 'interface', 'internal', 'is', 'lock',
+            'long', 'namespace', 'new', 'null', 'object', 'operator', 'out', 'override', 'params',
+            'private', 'protected', 'public', 'readonly', 'ref', 'return', 'sbyte', 'sealed',
+            'short', 'sizeof', 'stackalloc', 'static', 'string', 'struct', 'switch', 'this',
+            'throw', 'true', 'try', 'typeof', 'uint', 'ulong', 'unchecked', 'unsafe', 'ushort',
+            'using', 'virtual', 'void', 'volatile', 'while', 'async', 'await', 'var'
+        ]
+        keyword_pattern = r'\b(' + '|'.join(keywords) + r')\b'
+        self.highlighting_rules.append((re.compile(keyword_pattern), keyword_format))
+
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        self.highlighting_rules.append((re.compile(r'//[^\n]*'), comment_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        self.highlighting_rules.append((re.compile(r'\b\d+(\.\d+)?\b'), number_format))
+
+
+class JavaScriptSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for JavaScript"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Keywords
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            'async', 'await', 'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
+            'default', 'delete', 'do', 'else', 'export', 'extends', 'finally', 'for', 'function',
+            'if', 'import', 'in', 'instanceof', 'let', 'new', 'return', 'super', 'switch', 'this',
+            'throw', 'try', 'typeof', 'var', 'void', 'while', 'with', 'yield', 'true', 'false',
+            'null', 'undefined'
+        ]
+        keyword_pattern = r'\b(' + '|'.join(keywords) + r')\b'
+        self.highlighting_rules.append((re.compile(keyword_pattern), keyword_format))
+
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        self.highlighting_rules.append((re.compile(r'//[^\n]*'), comment_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+        self.highlighting_rules.append((re.compile(r"'[^'\\]*(\\.[^'\\]*)*'"), string_format))
+        self.highlighting_rules.append((re.compile(r'`[^`\\]*(\\.[^`\\]*)*`'), string_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        self.highlighting_rules.append((re.compile(r'\b\d+(\.\d+)?\b'), number_format))
+
+
+class PythonSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for Python"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Keywords
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        keywords = [
+            'False', 'None', 'True', 'and', 'as', 'assert', 'async', 'await', 'break', 'class',
+            'continue', 'def', 'del', 'elif', 'else', 'except', 'finally', 'for', 'from', 'global',
+            'if', 'import', 'in', 'is', 'lambda', 'nonlocal', 'not', 'or', 'pass', 'raise',
+            'return', 'try', 'while', 'with', 'yield'
+        ]
+        keyword_pattern = r'\b(' + '|'.join(keywords) + r')\b'
+        self.highlighting_rules.append((re.compile(keyword_pattern), keyword_format))
+
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        self.highlighting_rules.append((re.compile(r'#[^\n]*'), comment_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"""[^"]*"""'), string_format))
+        self.highlighting_rules.append((re.compile(r"'''[^']*'''"), string_format))
+        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+        self.highlighting_rules.append((re.compile(r"'[^'\\]*(\\.[^'\\]*)*'"), string_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        self.highlighting_rules.append((re.compile(r'\b\d+(\.\d+)?\b'), number_format))
+
+
+class XMLSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for XML"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Tags
+        tag_format = QTextCharFormat()
+        tag_format.setForeground(QColor(self.theme['keyword']))
+        tag_format.setFontWeight(QFont.Bold)
+        self.highlighting_rules.append((re.compile(r'<[/]?[\w:]+'), tag_format))
+        self.highlighting_rules.append((re.compile(r'[/]?>'), tag_format))
+
+        # Attributes
+        datatype_format = QTextCharFormat()
+        datatype_format.setForeground(QColor(self.theme['datatype']))
+        self.highlighting_rules.append((re.compile(r'\b[\w:]+(?==)'), datatype_format))
+
+        # Strings (attribute values)
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"[^"]*"'), string_format))
+        self.highlighting_rules.append((re.compile(r"'[^']*'"), string_format))
+
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        self.highlighting_rules.append((re.compile(r'<!--[^-]*-->'), comment_format))
+
+
+class JSONSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for JSON"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Keywords (true, false, null)
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        self.highlighting_rules.append((re.compile(r'\b(true|false|null)\b'), keyword_format))
+
+        # Keys
+        datatype_format = QTextCharFormat()
+        datatype_format.setForeground(QColor(self.theme['datatype']))
+        self.highlighting_rules.append((re.compile(r'"[\w-]+"(?=\s*:)'), datatype_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"[^"\\]*(\\.[^"\\]*)*"'), string_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        self.highlighting_rules.append((re.compile(r'\b-?\d+(\.\d+)?([eE][+-]?\d+)?\b'), number_format))
+
+
+class YAMLSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for YAML"""
+    def update_highlighting_rules(self):
+        self.highlighting_rules = []
+
+        # Keywords (true, false, null, yes, no)
+        keyword_format = QTextCharFormat()
+        keyword_format.setForeground(QColor(self.theme['keyword']))
+        keyword_format.setFontWeight(QFont.Bold)
+        self.highlighting_rules.append((re.compile(r'\b(true|false|null|yes|no|on|off)\b'), keyword_format))
+
+        # Keys
+        datatype_format = QTextCharFormat()
+        datatype_format.setForeground(QColor(self.theme['datatype']))
+        self.highlighting_rules.append((re.compile(r'^[\w-]+(?=:)'), datatype_format))
+        self.highlighting_rules.append((re.compile(r'\s[\w-]+(?=:)'), datatype_format))
+
+        # Strings
+        string_format = QTextCharFormat()
+        string_format.setForeground(QColor(self.theme['string']))
+        self.highlighting_rules.append((re.compile(r'"[^"]*"'), string_format))
+        self.highlighting_rules.append((re.compile(r"'[^']*'"), string_format))
+
+        # Comments
+        comment_format = QTextCharFormat()
+        comment_format.setForeground(QColor(self.theme['comment']))
+        comment_format.setFontItalic(True)
+        self.highlighting_rules.append((re.compile(r'#[^\n]*'), comment_format))
+
+        # Numbers
+        number_format = QTextCharFormat()
+        number_format.setForeground(QColor(self.theme['number']))
+        self.highlighting_rules.append((re.compile(r'\b-?\d+(\.\d+)?\b'), number_format))
+
+
+class CobolSyntaxHighlighter(SyntaxHighlighterBase):
+    """Syntax highlighter for COBOL"""
     def update_highlighting_rules(self):
         """Setup highlighting rules based on current theme"""
         self.highlighting_rules = []
@@ -142,14 +451,6 @@ class CobolSyntaxHighlighter(QSyntaxHighlighter):
         number_format.setForeground(QColor(self.theme['number']))
         number_pattern = r'\b\d+(\.\d+)?\b'
         self.highlighting_rules.append((re.compile(number_pattern), number_format))
-
-    def highlightBlock(self, text):
-        """Apply syntax highlighting to the given text block"""
-        for pattern, format in self.highlighting_rules:
-            for match in pattern.finditer(text):
-                start = match.start()
-                length = match.end() - start
-                self.setFormat(start, length, format)
 
 
 class CodeEditor(QPlainTextEdit):
@@ -265,6 +566,29 @@ class CobolEditor(QMainWindow):
         self.font_family = 'Consolas'
         self.current_theme = 'Light'
 
+        # Default syntax highlighter mappings
+        self.default_syntax_mappings = {
+            'COBOL': ['cbl', 'cob', 'cobol'],
+            'C#': ['cs', 'csharp'],
+            'JavaScript': ['js', 'jsx', 'mjs'],
+            'Python': ['py', 'pyw'],
+            'XML': ['xml', 'xaml', 'svg'],
+            'JSON': ['json'],
+            'YAML': ['yaml', 'yml']
+        }
+        self.syntax_mappings = self.default_syntax_mappings.copy()
+
+        # Highlighter class mapping
+        self.highlighter_classes = {
+            'COBOL': CobolSyntaxHighlighter,
+            'C#': CSharpSyntaxHighlighter,
+            'JavaScript': JavaScriptSyntaxHighlighter,
+            'Python': PythonSyntaxHighlighter,
+            'XML': XMLSyntaxHighlighter,
+            'JSON': JSONSyntaxHighlighter,
+            'YAML': YAMLSyntaxHighlighter
+        }
+
         # Define color themes
         self.themes = {
             'Light': {
@@ -332,6 +656,22 @@ class CobolEditor(QMainWindow):
         self.init_ui()
         self.load_settings()
         self.apply_theme(self.current_theme)
+
+    def get_highlighter_for_file(self, file_path):
+        """Get the appropriate syntax highlighter class for a file based on its extension"""
+        if not file_path:
+            return CobolSyntaxHighlighter  # Default to COBOL
+
+        # Get file extension
+        ext = os.path.splitext(file_path)[1].lstrip('.').lower()
+
+        # Find which language this extension belongs to
+        for lang, extensions in self.syntax_mappings.items():
+            if ext in [e.lower() for e in extensions]:
+                return self.highlighter_classes.get(lang, CobolSyntaxHighlighter)
+
+        # Default to COBOL if no match
+        return CobolSyntaxHighlighter
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -515,6 +855,12 @@ class CobolEditor(QMainWindow):
         reset_font_action.triggered.connect(self.reset_font_size)
         view_menu.addAction(reset_font_action)
 
+        view_menu.addSeparator()
+
+        syntax_config_action = QAction("Configure Syntax Highlighting...", self)
+        syntax_config_action.triggered.connect(self.configure_syntax_highlighting)
+        view_menu.addAction(syntax_config_action)
+
         # Help menu
         help_menu = menubar.addMenu("Help")
 
@@ -525,7 +871,11 @@ class CobolEditor(QMainWindow):
     def create_new_tab(self, file_path=None, content=""):
         """Create a new tab with a code editor"""
         editor = CodeEditor(self)
-        highlighter = CobolSyntaxHighlighter(editor.document(), self.themes[self.current_theme])
+
+        # Get the appropriate highlighter class for this file
+        highlighter_class = self.get_highlighter_for_file(file_path)
+        highlighter = highlighter_class(editor.document(), self.themes[self.current_theme])
+
         editor.textChanged.connect(lambda: self.on_text_changed(editor))
 
         # Apply current font settings
@@ -641,6 +991,16 @@ class CobolEditor(QMainWindow):
         # Load theme
         self.current_theme = self.settings.value('theme', 'Light', type=str)
 
+        # Load syntax highlighting mappings
+        syntax_json = self.settings.value('syntax_mappings', '', type=str)
+        if syntax_json:
+            try:
+                self.syntax_mappings = json.loads(syntax_json)
+            except (json.JSONDecodeError, TypeError):
+                self.syntax_mappings = self.default_syntax_mappings.copy()
+        else:
+            self.syntax_mappings = self.default_syntax_mappings.copy()
+
         # Load working directory
         working_dir = self.settings.value('working_directory', '', type=str)
         if working_dir and os.path.exists(working_dir):
@@ -676,6 +1036,10 @@ class CobolEditor(QMainWindow):
 
         # Save theme
         self.settings.setValue('theme', self.current_theme)
+
+        # Save syntax highlighting mappings
+        syntax_json = json.dumps(self.syntax_mappings)
+        self.settings.setValue('syntax_mappings', syntax_json)
 
         # Save working directory
         if self.working_directory:
@@ -813,11 +1177,13 @@ class CobolEditor(QMainWindow):
 
     def find_text(self):
         """Open find dialog"""
-        text, ok = QInputDialog.getText(self, "Find", "Enter text to find:")
-        if ok and text:
-            self.search_text = text
-            self.last_search_position = 0
-            self.find_next()
+        dialog = SearchDialog(self, "Find", "Enter text to find:")
+        if dialog.exec() == QDialog.Accepted:
+            text = dialog.get_text()
+            if text:
+                self.search_text = text
+                self.last_search_position = 0
+                self.find_next()
 
     def find_next(self):
         """Find next occurrence of search text in current tab"""
@@ -901,6 +1267,19 @@ class CobolEditor(QMainWindow):
                 editor.setFont(font)
                 editor.update_line_number_area_width(0)
 
+    def configure_syntax_highlighting(self):
+        """Open dialog to configure syntax highlighting mappings"""
+        dialog = SyntaxConfigDialog(self, self.syntax_mappings)
+        if dialog.exec() == QDialog.Accepted:
+            new_mappings = dialog.get_mappings()
+            if new_mappings:
+                self.syntax_mappings = new_mappings
+                self.save_settings()
+                self.status_bar.showMessage("Syntax highlighting configuration updated")
+                QMessageBox.information(self, "Configuration Updated",
+                    "Syntax highlighting configuration has been saved.\n"
+                    "New settings will apply to newly opened files.")
+
     def apply_theme(self, theme_name):
         """Apply a color theme to all editors"""
         if theme_name not in self.themes:
@@ -967,8 +1346,12 @@ class CobolEditor(QMainWindow):
         if not directory:
             return
 
-        text, ok = QInputDialog.getText(self, "Find in Files", "Enter text to find:")
-        if not ok or not text:
+        dialog = SearchDialog(self, "Find in Files", "Enter text to search for:")
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        text = dialog.get_text()
+        if not text:
             return
 
         # Search in files

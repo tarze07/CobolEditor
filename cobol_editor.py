@@ -884,26 +884,66 @@ class CobolEditor(QMainWindow):
         # Create search results panel
         self.search_panel = QWidget()
         search_panel_layout = QVBoxLayout(self.search_panel)
-        search_panel_layout.setContentsMargins(0, 0, 0, 0)
-        search_panel_layout.setSpacing(0)
+        search_panel_layout.setContentsMargins(5, 5, 5, 5)
+        search_panel_layout.setSpacing(5)
 
-        # Search panel header
-        self.search_panel_label = QLabel("Search Results")
+        # Search panel header with close button
+        header_layout = QHBoxLayout()
+        self.search_panel_label = QLabel("Search in Files")
         self.search_panel_label.setAlignment(Qt.AlignCenter)
         self.search_panel_label.setMaximumHeight(25)
-        search_panel_layout.addWidget(self.search_panel_label)
+        header_layout.addWidget(self.search_panel_label)
+
+        close_search_button = QPushButton("×")
+        close_search_button.setMaximumWidth(30)
+        close_search_button.setMaximumHeight(25)
+        close_search_button.setStyleSheet("font-size: 16px; font-weight: bold;")
+        close_search_button.setToolTip("Close search panel")
+        close_search_button.clicked.connect(self.search_panel.hide)
+        header_layout.addWidget(close_search_button)
+
+        search_panel_layout.addLayout(header_layout)
+
+        # Search input field
+        search_input_layout = QHBoxLayout()
+        search_input_label = QLabel("Search:")
+        search_input_label.setMaximumWidth(60)
+        search_input_layout.addWidget(search_input_label)
+
+        self.search_input_field = QLineEdit()
+        self.search_input_field.setPlaceholderText("Type to search (minimum 2 characters)...")
+        self.search_input_field.setMinimumHeight(30)
+        font = QFont("Consolas", 10)
+        self.search_input_field.setFont(font)
+        search_input_layout.addWidget(self.search_input_field)
+
+        search_panel_layout.addLayout(search_input_layout)
+
+        # Search status label
+        self.search_status_label = QLabel("Type at least 2 characters to start searching...")
+        self.search_status_label.setMinimumHeight(20)
+        self.search_status_label.setStyleSheet("padding: 3px; background-color: #f0f0f0;")
+        search_panel_layout.addWidget(self.search_status_label)
 
         # Search results list
         self.search_results_list = QListWidget()
+        self.search_results_list.setMinimumHeight(150)
         search_panel_layout.addWidget(self.search_results_list)
 
-        # Search status label
-        self.search_status_label = QLabel("")
-        self.search_status_label.setMaximumHeight(20)
-        search_panel_layout.addWidget(self.search_status_label)
+        # Info label
+        info_label = QLabel("Double-click a result to open the file at that line")
+        info_label.setStyleSheet("font-style: italic; color: #666;")
+        search_panel_layout.addWidget(info_label)
 
         # Initially hide search panel
         self.search_panel.hide()
+
+        # Store search results
+        self.current_search_results = []
+
+        # Connect search input signal
+        self.search_input_field.textChanged.connect(self.on_search_input_changed)
+        self.search_results_list.itemDoubleClicked.connect(self.on_search_result_double_clicked)
 
         vertical_splitter.addWidget(self.search_panel)
 
@@ -1533,23 +1573,29 @@ class CobolEditor(QMainWindow):
         self.status_bar.showMessage(f"Theme changed to: {theme_name}")
 
     def find_in_files(self):
-        """Open multi-file search dialog with live search"""
+        """Show docked search panel with live search"""
         # Use working directory if available, otherwise ask for directory
-        search_dir = self.working_directory
-
-        if not search_dir:
+        if not self.working_directory:
             # Ask user to select directory
             directory = QFileDialog.getExistingDirectory(self, "Select directory to search in")
             if not directory:
                 return
-            search_dir = directory
+            self.working_directory = directory
+            self.populate_tree()
+            self.save_settings()
 
-        # Open live search dialog
-        dialog = LiveSearchDialog(self, working_dir=search_dir)
-        dialog.exec()
+        # Show the search panel
+        self.search_panel.show()
+
+        # Clear previous search and focus on input field
+        self.search_input_field.clear()
+        self.search_input_field.setFocus()
+        self.search_results_list.clear()
+        self.current_search_results = []
+        self.search_status_label.setText("Type at least 2 characters to start searching...")
 
     def search_in_working_directory_for_text(self, text):
-        """Search for given text in working directory using live search dialog"""
+        """Search for given text in working directory using docked search panel"""
         if not self.working_directory:
             QMessageBox.warning(self, "No Working Directory",
                               "Please select a working directory first using File > Select Working Directory")
@@ -1558,10 +1604,65 @@ class CobolEditor(QMainWindow):
         if not text:
             return
 
-        # Open live search dialog with pre-filled text
-        dialog = LiveSearchDialog(self, working_dir=self.working_directory)
-        dialog.text_input.setText(text)  # Pre-fill the search text
-        dialog.exec()
+        # Show the search panel and pre-fill search text
+        self.search_panel.show()
+        self.search_input_field.setText(text)  # Pre-fill the search text
+        self.search_input_field.setFocus()
+
+    def on_search_input_changed(self, text):
+        """Handle search input change and perform live search"""
+        if len(text) < 2:
+            self.search_results_list.clear()
+            self.current_search_results = []
+            if len(text) == 0:
+                self.search_status_label.setText("Type at least 2 characters to start searching...")
+            else:
+                self.search_status_label.setText(f"Type {2 - len(text)} more character(s)...")
+            return
+
+        # Perform search
+        self.perform_live_search(text)
+
+    def perform_live_search(self, text):
+        """Perform live search in working directory"""
+        if not self.working_directory or not os.path.exists(self.working_directory):
+            self.search_status_label.setText("No working directory set. Use File > Select Working Directory")
+            self.search_results_list.clear()
+            self.current_search_results = []
+            return
+
+        self.search_status_label.setText("Searching...")
+        self.search_results_list.clear()
+        self.current_search_results = []
+
+        # Search in files
+        match_count = 0
+        file_count = 0
+        for root, dirs, files in os.walk(self.working_directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                file_count += 1
+                try:
+                    with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        for line_num, line in enumerate(f, 1):
+                            if text.lower() in line.lower():
+                                self.current_search_results.append((file_path, line_num, line.strip()))
+                                display_text = f"{file_path}:{line_num}: {line.strip()}"
+                                self.search_results_list.addItem(display_text)
+                                match_count += 1
+
+                                # Limit results to prevent UI slowdown
+                                if match_count >= 1000:
+                                    self.search_status_label.setText(f"Found 1000+ matches (showing first 1000). Searched {file_count} files.")
+                                    return
+                except Exception:
+                    continue
+
+        # Update status
+        if match_count == 0:
+            self.search_status_label.setText(f"No matches found. Searched {file_count} files in: {self.working_directory}")
+        else:
+            self.search_status_label.setText(f"Found {match_count} matches in {file_count} files. Double-click to open.")
 
     def show_search_results(self, search_text, results):
         """Show search results in embedded panel"""
@@ -1582,13 +1683,6 @@ class CobolEditor(QMainWindow):
 
         # Show the search panel
         self.search_panel.show()
-
-        # Connect double-click handler (disconnect first to avoid multiple connections)
-        try:
-            self.search_results_list.itemDoubleClicked.disconnect()
-        except:
-            pass
-        self.search_results_list.itemDoubleClicked.connect(self.on_search_result_double_clicked)
 
     def on_search_result_double_clicked(self, item):
         """Handle double-click on search result"""

@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (
     QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QLabel, QFrame,
     QFileDialog, QMessageBox, QInputDialog, QDialog, QListWidget,
     QScrollBar, QSplitter, QStatusBar, QMenuBar, QMenu, QTabWidget,
-    QPushButton, QLineEdit, QTextEdit, QComboBox, QFormLayout, QDialogButtonBox
+    QPushButton, QLineEdit, QTextEdit, QComboBox, QFormLayout, QDialogButtonBox,
+    QScrollArea, QCheckBox
 )
 from PySide6.QtCore import Qt, QRect, QSize, Signal, Slot, QSettings, QThread
 from PySide6.QtGui import (
@@ -234,12 +235,14 @@ class SearchWorker(QThread):
         '.log', '.ini', '.cfg', '.conf'  # Config/logs
     }
 
-    def __init__(self, working_directory, search_text):
+    def __init__(self, working_directory, search_text, searchable_extensions=None):
         super().__init__()
         self.working_directory = working_directory
         self.search_text = search_text.lower()
         self.cancelled = False
         self.max_results = 1000
+        # Use provided extensions or default to class variable
+        self.searchable_extensions = searchable_extensions if searchable_extensions is not None else self.SEARCHABLE_EXTENSIONS
 
     def cancel(self):
         """Cancel the search operation"""
@@ -248,7 +251,7 @@ class SearchWorker(QThread):
     def is_searchable_file(self, filename):
         """Check if file should be searched based on extension"""
         _, ext = os.path.splitext(filename.lower())
-        return ext in self.SEARCHABLE_EXTENSIONS
+        return ext in self.searchable_extensions
 
     def run(self):
         """Execute the search in background thread"""
@@ -378,6 +381,117 @@ class SyntaxConfigDialog(QDialog):
                 if extensions:
                     mappings[lang] = extensions
         return mappings
+
+
+class FileTypeFilterDialog(QDialog):
+    """Dialog for selecting which file types to include in search"""
+    def __init__(self, parent=None, all_extensions=None, selected_extensions=None):
+        super().__init__(parent)
+        self.setWindowTitle("File Type Filter")
+        self.setMinimumWidth(500)
+        self.setMinimumHeight(600)
+
+        # Store all available extensions
+        self.all_extensions = all_extensions or set()
+        self.selected_extensions = selected_extensions or self.all_extensions.copy()
+
+        layout = QVBoxLayout(self)
+
+        # Add description
+        desc = QLabel("Select which file types to include in search:")
+        desc.setStyleSheet("font-weight: bold; padding: 5px;")
+        layout.addWidget(desc)
+
+        # Add Select All / Deselect All buttons
+        button_layout = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all)
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all)
+        button_layout.addWidget(select_all_btn)
+        button_layout.addWidget(deselect_all_btn)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Create scrollable area for checkboxes
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+
+        # Group extensions by category
+        extension_groups = {
+            'COBOL': ['.cob', '.cbl', '.cobol', '.cpy'],
+            'C#': ['.cs', '.csharp'],
+            'JavaScript/TypeScript': ['.js', '.jsx', '.ts', '.tsx'],
+            'Python': ['.py', '.pyw'],
+            'Markup': ['.xml', '.xaml', '.html', '.htm'],
+            'Configuration': ['.json', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf'],
+            'Documentation': ['.txt', '.md', '.rst'],
+            'C/C++': ['.c', '.cpp', '.h', '.hpp'],
+            'JVM Languages': ['.java', '.kt'],
+            'Other Languages': ['.go', '.rs', '.rb', '.php'],
+            'Scripts': ['.sql', '.sh', '.bat', '.ps1'],
+            'Styles': ['.css', '.scss', '.sass', '.less'],
+            'Logs': ['.log']
+        }
+
+        # Create checkboxes for each group
+        self.checkboxes = {}
+        for group_name, extensions in extension_groups.items():
+            # Add group label
+            group_label = QLabel(group_name)
+            group_label.setStyleSheet("font-weight: bold; margin-top: 10px; color: #0066cc;")
+            scroll_layout.addWidget(group_label)
+
+            # Add checkboxes for extensions in this group
+            for ext in extensions:
+                if ext in self.all_extensions:
+                    checkbox = QCheckBox(ext)
+                    checkbox.setChecked(ext in self.selected_extensions)
+                    checkbox.setStyleSheet("margin-left: 20px;")
+                    scroll_layout.addWidget(checkbox)
+                    self.checkboxes[ext] = checkbox
+
+        scroll_layout.addStretch()
+        scroll_area.setWidget(scroll_widget)
+        layout.addWidget(scroll_area)
+
+        # Add info label
+        self.info_label = QLabel()
+        self.update_info_label()
+        self.info_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; margin-top: 5px;")
+        layout.addWidget(self.info_label)
+
+        # Connect checkbox changes to update info
+        for checkbox in self.checkboxes.values():
+            checkbox.stateChanged.connect(self.update_info_label)
+
+        # Add buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def select_all(self):
+        """Select all file types"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(True)
+
+    def deselect_all(self):
+        """Deselect all file types"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(False)
+
+    def update_info_label(self):
+        """Update the info label with count of selected types"""
+        selected_count = sum(1 for cb in self.checkboxes.values() if cb.isChecked())
+        total_count = len(self.checkboxes)
+        self.info_label.setText(f"Selected: {selected_count} of {total_count} file types")
+
+    def get_selected_extensions(self):
+        """Get the set of selected file extensions"""
+        return {ext for ext, checkbox in self.checkboxes.items() if checkbox.isChecked()}
 
 
 class SyntaxHighlighterBase(QSyntaxHighlighter):
@@ -820,6 +934,9 @@ class CobolEditor(QMainWindow):
         # Track open files: {tab_index: {'path': file_path, 'modified': bool}}
         self.open_files = {}
 
+        # Store selected file types for search (default: all types from SearchWorker.SEARCHABLE_EXTENSIONS)
+        self.search_file_types = SearchWorker.SEARCHABLE_EXTENSIONS.copy()
+
         # Initialize settings
         self.settings = QSettings('CobolEditor', 'CobolEditor')
 
@@ -1051,6 +1168,14 @@ class CobolEditor(QMainWindow):
         font = QFont("Consolas", 10)
         self.search_input_field.setFont(font)
         search_input_layout.addWidget(self.search_input_field)
+
+        # File Types filter button
+        self.file_types_button = QPushButton("File Types...")
+        self.file_types_button.setMaximumWidth(100)
+        self.file_types_button.setMinimumHeight(30)
+        self.file_types_button.setToolTip("Select which file types to search")
+        self.file_types_button.clicked.connect(self.configure_search_file_types)
+        search_input_layout.addWidget(self.file_types_button)
 
         # Cancel search button
         self.cancel_search_button = QPushButton("Cancel")
@@ -1363,6 +1488,16 @@ class CobolEditor(QMainWindow):
             if hasattr(self, 'file_tree'):
                 self.populate_tree()
 
+        # Load search file types
+        search_types_json = self.settings.value('search_file_types', '', type=str)
+        if search_types_json:
+            try:
+                self.search_file_types = set(json.loads(search_types_json))
+            except (json.JSONDecodeError, TypeError):
+                self.search_file_types = SearchWorker.SEARCHABLE_EXTENSIONS.copy()
+        else:
+            self.search_file_types = SearchWorker.SEARCHABLE_EXTENSIONS.copy()
+
         # Load window geometry
         geometry = self.settings.value('window_geometry')
         if geometry:
@@ -1398,6 +1533,10 @@ class CobolEditor(QMainWindow):
         # Save working directory
         if self.working_directory:
             self.settings.setValue('working_directory', self.working_directory)
+
+        # Save search file types
+        search_types_json = json.dumps(list(self.search_file_types))
+        self.settings.setValue('search_file_types', search_types_json)
 
         # Save window geometry
         self.settings.setValue('window_geometry', self.saveGeometry())
@@ -1813,8 +1952,8 @@ class CobolEditor(QMainWindow):
         # Enable cancel button
         self.cancel_search_button.setEnabled(True)
 
-        # Create and start new search worker
-        self.search_worker = SearchWorker(self.working_directory, text)
+        # Create and start new search worker with filtered file types
+        self.search_worker = SearchWorker(self.working_directory, text, self.search_file_types)
 
         # Connect signals
         self.search_worker.result_found.connect(self.on_search_result_found)
@@ -1832,6 +1971,23 @@ class CobolEditor(QMainWindow):
             self.search_status_label.setText("Search cancelled by user")
             self.cancel_search_button.setEnabled(False)
             self.file_scanning_label.hide()
+
+    def configure_search_file_types(self):
+        """Open dialog to configure which file types to search"""
+        dialog = FileTypeFilterDialog(
+            self,
+            all_extensions=SearchWorker.SEARCHABLE_EXTENSIONS,
+            selected_extensions=self.search_file_types
+        )
+        if dialog.exec() == QDialog.Accepted:
+            new_selection = dialog.get_selected_extensions()
+            if new_selection:
+                self.search_file_types = new_selection
+                self.save_settings()
+                self.status_bar.showMessage(f"File type filter updated: {len(new_selection)} types selected")
+            else:
+                QMessageBox.warning(self, "No File Types Selected",
+                                  "Please select at least one file type to search.")
 
     def on_search_result_found(self, file_path, line_num, line_text):
         """Handle individual search result from worker thread"""

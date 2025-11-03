@@ -204,6 +204,7 @@ class SearchWorker(QThread):
     result_found = Signal(str, int, str)  # file_path, line_num, line_text
     progress_update = Signal(int, int)    # files_searched, matches_found
     search_finished = Signal(int, int)    # total_files, total_matches
+    file_scanning = Signal(str)           # current_file_path being scanned
 
     # Directories to skip during search
     SKIP_DIRS = {
@@ -276,6 +277,9 @@ class SearchWorker(QThread):
 
                     file_path = os.path.join(root, file)
                     file_count += 1
+
+                    # Emit signal for currently scanning file
+                    self.file_scanning.emit(file_path)
 
                     try:
                         # Skip large files (> 10MB)
@@ -1064,6 +1068,14 @@ class CobolEditor(QMainWindow):
         self.search_status_label.setStyleSheet("padding: 3px; background-color: #f0f0f0;")
         search_panel_layout.addWidget(self.search_status_label)
 
+        # File scanning label (shows currently scanned file)
+        self.file_scanning_label = QLabel("")
+        self.file_scanning_label.setMinimumHeight(20)
+        self.file_scanning_label.setStyleSheet("padding: 3px; background-color: #e8f4f8; font-style: italic; color: #555;")
+        self.file_scanning_label.setWordWrap(True)
+        self.file_scanning_label.hide()  # Initially hidden
+        search_panel_layout.addWidget(self.file_scanning_label)
+
         # Search results list
         self.search_results_list = QListWidget()
         self.search_results_list.setMinimumHeight(150)
@@ -1780,6 +1792,10 @@ class CobolEditor(QMainWindow):
         self.search_results_list.clear()
         self.current_search_results = []
 
+        # Show file scanning label
+        self.file_scanning_label.show()
+        self.file_scanning_label.setText("Preparing to scan files...")
+
         # Enable cancel button
         self.cancel_search_button.setEnabled(True)
 
@@ -1790,6 +1806,7 @@ class CobolEditor(QMainWindow):
         self.search_worker.result_found.connect(self.on_search_result_found)
         self.search_worker.progress_update.connect(self.on_search_progress_update)
         self.search_worker.search_finished.connect(self.on_search_finished)
+        self.search_worker.file_scanning.connect(self.on_file_scanning)
 
         # Start the search in background
         self.search_worker.start()
@@ -1800,6 +1817,7 @@ class CobolEditor(QMainWindow):
             self.search_worker.cancel()
             self.search_status_label.setText("Search cancelled by user")
             self.cancel_search_button.setEnabled(False)
+            self.file_scanning_label.hide()
 
     def on_search_result_found(self, file_path, line_num, line_text):
         """Handle individual search result from worker thread"""
@@ -1813,9 +1831,16 @@ class CobolEditor(QMainWindow):
             f"Searching... Found {matches_found} matches in {files_searched} files"
         )
 
+    def on_file_scanning(self, file_path):
+        """Handle file scanning update from worker thread"""
+        self.file_scanning_label.setText(f"Scanning: {file_path}")
+
     def on_search_finished(self, total_files, total_matches):
         """Handle search completion from worker thread"""
         self.cancel_search_button.setEnabled(False)
+
+        # Hide file scanning label when search is complete
+        self.file_scanning_label.hide()
 
         if total_matches == 0:
             self.search_status_label.setText(

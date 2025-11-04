@@ -1220,12 +1220,18 @@ class CobolEditor(QMainWindow):
         self.tree_label = QLabel("Workspace")
         self.tree_label.setAlignment(Qt.AlignCenter)
         self.tree_label.setMaximumHeight(25)
+        tree_label_font = QFont("Segoe UI", 11, QFont.Bold)
+        tree_label_font.setStyleHint(QFont.SansSerif)
+        self.tree_label.setFont(tree_label_font)
         tree_layout.addWidget(self.tree_label)
 
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderHidden(True)
         self.file_tree.setMaximumWidth(300)
         self.file_tree.setMinimumWidth(150)
+        tree_font = QFont("Segoe UI", 10)
+        tree_font.setStyleHint(QFont.SansSerif)
+        self.file_tree.setFont(tree_font)
         self.file_tree.itemDoubleClicked.connect(self.on_tree_double_click)
         self.file_tree.itemExpanded.connect(self.on_tree_item_expanded)
         tree_layout.addWidget(self.file_tree)
@@ -2367,14 +2373,39 @@ class CobolEditor(QMainWindow):
                         self.add_tree_nodes(tree_item, full_path, lazy=False)
                 else:
                     # Add file
-                    if item.endswith(('.cbl', '.cob', '.cobol')):
-                        icon = "📄"
-                    else:
-                        icon = "📋"
+                    icon = self.get_file_icon(item)
                     tree_item = QTreeWidgetItem(parent_item, [f"{icon} {item}"])
                     tree_item.setData(0, Qt.UserRole, full_path)
         except PermissionError:
             pass
+
+    def get_file_icon(self, file_name):
+        """Return an emoji icon that reflects the file's type/version."""
+        extension = os.path.splitext(file_name)[1].lower()
+        icon_map = {
+            ".cbl": "🧾",
+            ".cob": "🧾",
+            ".cobol": "🧾",
+            ".py": "🐍",
+            ".js": "🟨",
+            ".ts": "🟦",
+            ".json": "🧩",
+            ".xml": "🧷",
+            ".yml": "🗂️",
+            ".yaml": "🗂️",
+            ".cs": "♯",
+            ".java": "☕",
+            ".txt": "📄",
+            ".md": "📝",
+            ".html": "🌐",
+            ".css": "🎨",
+            ".sql": "🗃️",
+            ".sh": "💻",
+            ".bat": "💾",
+            ".rb": "💎",
+            ".go": "🐹",
+        }
+        return icon_map.get(extension, "📄")
 
     def on_tree_item_expanded(self, item):
         """Handle tree item expansion - load children on demand (lazy loading)"""

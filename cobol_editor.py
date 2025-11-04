@@ -235,9 +235,13 @@ class SearchWorker(QThread):
         '.log', '.ini', '.cfg', '.conf'  # Config/logs
     }
 
-    def __init__(self, working_directory, search_text, searchable_extensions=None):
+    def __init__(self, working_directories, search_text, searchable_extensions=None):
         super().__init__()
-        self.working_directory = working_directory
+        # Support both single directory (string) and multiple directories (list)
+        if isinstance(working_directories, str):
+            self.working_directories = [working_directories]
+        else:
+            self.working_directories = working_directories if working_directories else []
         self.search_text = search_text.lower()
         self.cancelled = False
         self.max_results = 1000
@@ -261,65 +265,73 @@ class SearchWorker(QThread):
         batch_size = 50  # Emit results in batches for better UI performance
 
         try:
-            for root, dirs, files in os.walk(self.working_directory):
-                # Check for cancellation
+            # Search through all working directories
+            for working_dir in self.working_directories:
                 if self.cancelled:
                     break
 
-                # Skip unwanted directories (modify dirs in-place to skip traversal)
-                dirs[:] = [d for d in dirs if d not in self.SKIP_DIRS and not d.startswith('.')]
+                if not os.path.exists(working_dir):
+                    continue
 
-                for file in files:
+                for root, dirs, files in os.walk(working_dir):
                     # Check for cancellation
                     if self.cancelled:
                         break
 
-                    # Skip non-searchable files
-                    if not self.is_searchable_file(file):
-                        continue
+                    # Skip unwanted directories (modify dirs in-place to skip traversal)
+                    dirs[:] = [d for d in dirs if d not in self.SKIP_DIRS and not d.startswith('.')]
 
-                    file_path = os.path.join(root, file)
-                    file_count += 1
+                    for file in files:
+                        # Check for cancellation
+                        if self.cancelled:
+                            break
 
-                    # Emit signal for currently scanning file
-                    self.file_scanning.emit(file_path)
-
-                    try:
-                        # Skip large files (> 10MB)
-                        if os.path.getsize(file_path) > 10 * 1024 * 1024:
+                        # Skip non-searchable files
+                        if not self.is_searchable_file(file):
                             continue
 
-                        with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                            for line_num, line in enumerate(f, 1):
-                                if self.cancelled:
-                                    break
+                        file_path = os.path.join(root, file)
+                        file_count += 1
 
-                                if self.search_text in line.lower():
-                                    batch_results.append((file_path, line_num, line.strip()))
-                                    match_count += 1
+                        # Emit signal for currently scanning file
+                        self.file_scanning.emit(file_path)
 
-                                    # Emit batch of results
-                                    if len(batch_results) >= batch_size:
-                                        for result in batch_results:
-                                            self.result_found.emit(*result)
-                                        batch_results.clear()
-                                        self.progress_update.emit(file_count, match_count)
+                        try:
+                            # Skip large files (> 10MB)
+                            if os.path.getsize(file_path) > 10 * 1024 * 1024:
+                                continue
 
-                                    # Stop if max results reached
-                                    if match_count >= self.max_results:
-                                        # Emit remaining results
-                                        for result in batch_results:
-                                            self.result_found.emit(*result)
-                                        self.search_finished.emit(file_count, match_count)
-                                        return
+                            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                for line_num, line in enumerate(f, 1):
+                                    if self.cancelled:
+                                        break
 
-                    except Exception:
-                        # Skip files that can't be read
-                        continue
+                                    if self.search_text in line.lower():
+                                        batch_results.append((file_path, line_num, line.strip()))
+                                        match_count += 1
 
-                    # Periodic progress updates
-                    if file_count % 100 == 0:
-                        self.progress_update.emit(file_count, match_count)
+                                        # Emit batch of results
+                                        if len(batch_results) >= batch_size:
+                                            for result in batch_results:
+                                                self.result_found.emit(*result)
+                                            batch_results.clear()
+                                            self.progress_update.emit(file_count, match_count)
+
+                                        # Stop if max results reached
+                                        if match_count >= self.max_results:
+                                            # Emit remaining results
+                                            for result in batch_results:
+                                                self.result_found.emit(*result)
+                                            self.search_finished.emit(file_count, match_count)
+                                            return
+
+                        except Exception:
+                            # Skip files that can't be read
+                            continue
+
+                        # Periodic progress updates
+                        if file_count % 100 == 0:
+                            self.progress_update.emit(file_count, match_count)
 
             # Emit any remaining results
             for result in batch_results:
@@ -925,7 +937,7 @@ class CodeEditor(QPlainTextEdit):
 class CobolEditor(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
-        self.working_directory = None
+        self.working_directories = []  # Changed from single directory to list of directories
         self.search_text = ""
         self.last_search_position = 0
         self.file_to_open = file_to_open
@@ -1273,9 +1285,13 @@ class CobolEditor(QMainWindow):
 
         file_menu.addSeparator()
 
-        select_dir_action = QAction("Select Working Directory...", self)
-        select_dir_action.triggered.connect(self.select_working_directory)
-        file_menu.addAction(select_dir_action)
+        add_dir_action = QAction("Add Directory to Workspace...", self)
+        add_dir_action.triggered.connect(self.add_directory_to_workspace)
+        file_menu.addAction(add_dir_action)
+
+        remove_dir_action = QAction("Remove Directory from Workspace...", self)
+        remove_dir_action.triggered.connect(self.remove_directory_from_workspace)
+        file_menu.addAction(remove_dir_action)
 
         file_menu.addSeparator()
 
@@ -1481,13 +1497,26 @@ class CobolEditor(QMainWindow):
         else:
             self.syntax_mappings = self.default_syntax_mappings.copy()
 
-        # Load working directory
-        working_dir = self.settings.value('working_directory', '', type=str)
-        if working_dir and os.path.exists(working_dir):
-            self.working_directory = working_dir
-            # Only populate tree if file_tree widget exists
-            if hasattr(self, 'file_tree'):
-                self.populate_tree()
+        # Load working directories (support both old single directory and new list format)
+        working_dirs_json = self.settings.value('working_directories', '', type=str)
+        if working_dirs_json:
+            try:
+                loaded_dirs = json.loads(working_dirs_json)
+                # Validate that each directory still exists
+                self.working_directories = [d for d in loaded_dirs if os.path.exists(d)]
+            except (json.JSONDecodeError, TypeError):
+                self.working_directories = []
+        else:
+            # Legacy support: try loading old single directory format
+            working_dir = self.settings.value('working_directory', '', type=str)
+            if working_dir and os.path.exists(working_dir):
+                self.working_directories = [working_dir]
+            else:
+                self.working_directories = []
+
+        # Only populate tree if file_tree widget exists
+        if hasattr(self, 'file_tree'):
+            self.populate_tree()
 
         # Load search file types
         search_types_json = self.settings.value('search_file_types', '', type=str)
@@ -1531,9 +1560,10 @@ class CobolEditor(QMainWindow):
         syntax_json = json.dumps(self.syntax_mappings)
         self.settings.setValue('syntax_mappings', syntax_json)
 
-        # Save working directory
-        if self.working_directory:
-            self.settings.setValue('working_directory', self.working_directory)
+        # Save working directories
+        if self.working_directories:
+            working_dirs_json = json.dumps(self.working_directories)
+            self.settings.setValue('working_directories', working_dirs_json)
 
         # Save search file types
         search_types_json = json.dumps(list(self.search_file_types))
@@ -1879,13 +1909,13 @@ class CobolEditor(QMainWindow):
 
     def find_in_files(self):
         """Show docked search panel with live search"""
-        # Use working directory if available, otherwise ask for directory
-        if not self.working_directory:
-            # Ask user to select directory
-            directory = QFileDialog.getExistingDirectory(self, "Select directory to search in")
+        # Use working directories if available, otherwise ask for directory
+        if not self.working_directories:
+            # Ask user to add a directory
+            directory = QFileDialog.getExistingDirectory(self, "Add directory to workspace")
             if not directory:
                 return
-            self.working_directory = directory
+            self.working_directories.append(directory)
             self.populate_tree()
             self.save_settings()
 
@@ -1900,10 +1930,10 @@ class CobolEditor(QMainWindow):
         self.search_status_label.setText("Type at least 2 characters to start searching...")
 
     def search_in_working_directory_for_text(self, text):
-        """Search for given text in working directory using docked search panel"""
-        if not self.working_directory:
-            QMessageBox.warning(self, "No Working Directory",
-                              "Please select a working directory first using File > Select Working Directory")
+        """Search for given text in working directories using docked search panel"""
+        if not self.working_directories:
+            QMessageBox.warning(self, "No Working Directories",
+                              "Please add directories to workspace first using File > Add Directory to Workspace")
             return
 
         if not text:
@@ -1929,9 +1959,9 @@ class CobolEditor(QMainWindow):
         self.perform_live_search(text)
 
     def perform_live_search(self, text):
-        """Perform live search in working directory using background thread"""
-        if not self.working_directory or not os.path.exists(self.working_directory):
-            self.search_status_label.setText("No working directory set. Use File > Select Working Directory")
+        """Perform live search in working directories using background thread"""
+        if not self.working_directories:
+            self.search_status_label.setText("No working directories set. Use File > Add Directory to Workspace")
             self.search_results_list.clear()
             self.current_search_results = []
             return
@@ -1954,7 +1984,7 @@ class CobolEditor(QMainWindow):
         self.cancel_search_button.setEnabled(True)
 
         # Create and start new search worker with filtered file types
-        self.search_worker = SearchWorker(self.working_directory, text, self.search_file_types)
+        self.search_worker = SearchWorker(self.working_directories, text, self.search_file_types)
 
         # Connect signals
         self.search_worker.result_found.connect(self.on_search_result_found)
@@ -2014,8 +2044,10 @@ class CobolEditor(QMainWindow):
         self.file_scanning_label.hide()
 
         if total_matches == 0:
+            dir_count = len(self.working_directories)
+            dir_text = f"{dir_count} workspace {'directory' if dir_count == 1 else 'directories'}"
             self.search_status_label.setText(
-                f"No matches found. Searched {total_files} files in: {self.working_directory}"
+                f"No matches found. Searched {total_files} files in {dir_text}"
             )
         elif total_matches >= 1000:
             self.search_status_label.setText(
@@ -2089,30 +2121,60 @@ class CobolEditor(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to open file:\n{str(e)}")
 
-    def select_working_directory(self):
-        """Select a working directory to browse"""
-        directory = QFileDialog.getExistingDirectory(self, "Select Working Directory")
+    def add_directory_to_workspace(self):
+        """Add a directory to the workspace"""
+        directory = QFileDialog.getExistingDirectory(self, "Add Directory to Workspace")
         if directory:
-            self.working_directory = directory
+            # Check if directory is already in workspace
+            if directory in self.working_directories:
+                self.status_bar.showMessage(f"Directory already in workspace: {directory}")
+                return
+
+            # Add directory to workspace
+            self.working_directories.append(directory)
             self.populate_tree()
             self.save_settings()
-            self.status_bar.showMessage(f"Working directory: {directory}")
+            self.status_bar.showMessage(f"Added to workspace: {directory}")
 
-    def populate_tree(self):
-        """Populate the tree view with files and directories"""
-        self.file_tree.clear()
-
-        if not self.working_directory or not os.path.exists(self.working_directory):
+    def remove_directory_from_workspace(self):
+        """Remove a directory from the workspace"""
+        if not self.working_directories:
+            QMessageBox.information(self, "No Directories", "No directories in workspace to remove.")
             return
 
-        # Add root directory
-        root_name = os.path.basename(self.working_directory) or self.working_directory
-        root_item = QTreeWidgetItem(self.file_tree, [root_name])
-        root_item.setData(0, Qt.UserRole, self.working_directory)
+        # Show dialog to select which directory to remove
+        from PyQt5.QtWidgets import QInputDialog
+        directory, ok = QInputDialog.getItem(
+            self, "Remove Directory", "Select directory to remove:",
+            self.working_directories, 0, False
+        )
 
-        # Populate tree with lazy loading (only first level)
-        self.add_tree_nodes(root_item, self.working_directory, lazy=True)
-        root_item.setExpanded(True)
+        if ok and directory:
+            self.working_directories.remove(directory)
+            self.populate_tree()
+            self.save_settings()
+            self.status_bar.showMessage(f"Removed from workspace: {directory}")
+
+    def populate_tree(self):
+        """Populate the tree view with files and directories from all workspace directories"""
+        self.file_tree.clear()
+
+        if not self.working_directories:
+            return
+
+        # Add each working directory as a root node
+        for working_dir in self.working_directories:
+            if not os.path.exists(working_dir):
+                continue
+
+            # Add root directory
+            root_name = os.path.basename(working_dir) or working_dir
+            root_item = QTreeWidgetItem(self.file_tree, [root_name])
+            root_item.setData(0, Qt.UserRole, working_dir)
+
+            # Populate tree with lazy loading (only first level)
+            self.add_tree_nodes(root_item, working_dir, lazy=True)
+            root_item.setExpanded(True)
 
     def add_tree_nodes(self, parent_item, path, lazy=False):
         """Add nodes to the tree (with optional lazy loading)

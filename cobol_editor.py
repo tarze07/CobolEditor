@@ -2143,7 +2143,7 @@ class CobolEditor(QMainWindow):
             return
 
         # Show dialog to select which directory to remove
-        from PyQt5.QtWidgets import QInputDialog
+        from PySide6.QtWidgets import QInputDialog
         directory, ok = QInputDialog.getItem(
             self, "Remove Directory", "Select directory to remove:",
             self.working_directories, 0, False

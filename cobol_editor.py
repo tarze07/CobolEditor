@@ -506,6 +506,99 @@ class FileTypeFilterDialog(QDialog):
         return {ext for ext, checkbox in self.checkboxes.items() if checkbox.isChecked()}
 
 
+class DirectoryFilterDialog(QDialog):
+    """Dialog for selecting which directories to include in search"""
+    def __init__(self, parent=None, all_directories=None, selected_directories=None):
+        super().__init__(parent)
+        self.setWindowTitle("Directory Search Filter")
+        self.setMinimumWidth(600)
+        self.setMinimumHeight(400)
+
+        # Store all available directories
+        self.all_directories = all_directories or []
+        self.selected_directories = selected_directories or self.all_directories.copy()
+
+        layout = QVBoxLayout(self)
+
+        # Add description
+        desc = QLabel("Select which directories to include in search:")
+        desc.setStyleSheet("font-weight: bold; padding: 5px;")
+        layout.addWidget(desc)
+
+        # Add Select All / Deselect All buttons
+        button_layout = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all)
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all)
+        button_layout.addWidget(select_all_btn)
+        button_layout.addWidget(deselect_all_btn)
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Create scrollable area for checkboxes
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_widget = QWidget()
+        scroll_layout = QVBoxLayout(scroll_widget)
+
+        # Create checkboxes for each directory
+        self.checkboxes = {}
+        for directory in self.all_directories:
+            checkbox = QCheckBox(directory)
+            checkbox.setChecked(directory in self.selected_directories)
+            checkbox.setStyleSheet("margin: 5px; padding: 5px;")
+            checkbox.setToolTip(directory)
+            scroll_layout.addWidget(checkbox)
+            self.checkboxes[directory] = checkbox
+
+        if not self.all_directories:
+            no_dirs_label = QLabel("No directories in workspace.\nAdd directories using File > Add Directory to Workspace")
+            no_dirs_label.setStyleSheet("color: #666; font-style: italic; padding: 20px;")
+            no_dirs_label.setAlignment(Qt.AlignCenter)
+            scroll_layout.addWidget(no_dirs_label)
+
+        scroll_layout.addStretch()
+        scroll_area.setWidget(scroll_widget)
+        layout.addWidget(scroll_area)
+
+        # Add info label
+        self.info_label = QLabel()
+        self.update_info_label()
+        self.info_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; margin-top: 5px;")
+        layout.addWidget(self.info_label)
+
+        # Connect checkbox changes to update info
+        for checkbox in self.checkboxes.values():
+            checkbox.stateChanged.connect(self.update_info_label)
+
+        # Add buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+    def select_all(self):
+        """Select all directories"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(True)
+
+    def deselect_all(self):
+        """Deselect all directories"""
+        for checkbox in self.checkboxes.values():
+            checkbox.setChecked(False)
+
+    def update_info_label(self):
+        """Update the info label with count of selected directories"""
+        selected_count = sum(1 for cb in self.checkboxes.values() if cb.isChecked())
+        total_count = len(self.checkboxes)
+        self.info_label.setText(f"Selected: {selected_count} of {total_count} directories")
+
+    def get_selected_directories(self):
+        """Get the list of selected directories"""
+        return [directory for directory, checkbox in self.checkboxes.items() if checkbox.isChecked()]
+
+
 class SyntaxHighlighterBase(QSyntaxHighlighter):
     """Base class for all syntax highlighters"""
     def __init__(self, parent, theme):
@@ -949,6 +1042,10 @@ class CobolEditor(QMainWindow):
         # Store selected file types for search (default: all types from SearchWorker.SEARCHABLE_EXTENSIONS)
         self.search_file_types = SearchWorker.SEARCHABLE_EXTENSIONS.copy()
 
+        # Store selected directories for search (default: all working directories)
+        # This will be updated when working_directories are loaded
+        self.searchable_directories = []
+
         # Initialize settings
         self.settings = QSettings('CobolEditor', 'CobolEditor')
 
@@ -1189,6 +1286,14 @@ class CobolEditor(QMainWindow):
         self.file_types_button.setToolTip("Select which file types to search")
         self.file_types_button.clicked.connect(self.configure_search_file_types)
         search_input_layout.addWidget(self.file_types_button)
+
+        # Directories filter button
+        self.directories_button = QPushButton("Directories...")
+        self.directories_button.setMaximumWidth(100)
+        self.directories_button.setMinimumHeight(30)
+        self.directories_button.setToolTip("Select which directories to search")
+        self.directories_button.clicked.connect(self.configure_search_directories)
+        search_input_layout.addWidget(self.directories_button)
 
         # Cancel search button
         self.cancel_search_button = QPushButton("Cancel")
@@ -1528,6 +1633,19 @@ class CobolEditor(QMainWindow):
         else:
             self.search_file_types = SearchWorker.SEARCHABLE_EXTENSIONS.copy()
 
+        # Load searchable directories
+        searchable_dirs_json = self.settings.value('searchable_directories', '', type=str)
+        if searchable_dirs_json:
+            try:
+                loaded_searchable_dirs = json.loads(searchable_dirs_json)
+                # Only keep directories that are still in working_directories
+                self.searchable_directories = [d for d in loaded_searchable_dirs if d in self.working_directories]
+            except (json.JSONDecodeError, TypeError):
+                self.searchable_directories = self.working_directories.copy()
+        else:
+            # Default: all working directories are searchable
+            self.searchable_directories = self.working_directories.copy()
+
         # Load window geometry
         geometry = self.settings.value('window_geometry')
         if geometry:
@@ -1568,6 +1686,10 @@ class CobolEditor(QMainWindow):
         # Save search file types
         search_types_json = json.dumps(list(self.search_file_types))
         self.settings.setValue('search_file_types', search_types_json)
+
+        # Save searchable directories
+        searchable_dirs_json = json.dumps(self.searchable_directories)
+        self.settings.setValue('searchable_directories', searchable_dirs_json)
 
         # Save window geometry
         self.settings.setValue('window_geometry', self.saveGeometry())
@@ -1966,6 +2088,15 @@ class CobolEditor(QMainWindow):
             self.current_search_results = []
             return
 
+        # Use searchable_directories if set, otherwise use all working_directories
+        directories_to_search = self.searchable_directories if self.searchable_directories else self.working_directories
+
+        if not directories_to_search:
+            self.search_status_label.setText("No directories selected for search. Use 'Directories...' button to select.")
+            self.search_results_list.clear()
+            self.current_search_results = []
+            return
+
         # Cancel any existing search
         if self.search_worker and self.search_worker.isRunning():
             self.search_worker.cancel()
@@ -1983,8 +2114,8 @@ class CobolEditor(QMainWindow):
         # Enable cancel button
         self.cancel_search_button.setEnabled(True)
 
-        # Create and start new search worker with filtered file types
-        self.search_worker = SearchWorker(self.working_directories, text, self.search_file_types)
+        # Create and start new search worker with filtered file types and selected directories
+        self.search_worker = SearchWorker(directories_to_search, text, self.search_file_types)
 
         # Connect signals
         self.search_worker.result_found.connect(self.on_search_result_found)
@@ -2019,6 +2150,28 @@ class CobolEditor(QMainWindow):
             else:
                 QMessageBox.warning(self, "No File Types Selected",
                                   "Please select at least one file type to search.")
+
+    def configure_search_directories(self):
+        """Open dialog to configure which directories to search"""
+        if not self.working_directories:
+            QMessageBox.information(self, "No Directories",
+                                  "No directories in workspace. Add directories using File > Add Directory to Workspace")
+            return
+
+        dialog = DirectoryFilterDialog(
+            self,
+            all_directories=self.working_directories,
+            selected_directories=self.searchable_directories
+        )
+        if dialog.exec() == QDialog.Accepted:
+            new_selection = dialog.get_selected_directories()
+            if new_selection:
+                self.searchable_directories = new_selection
+                self.save_settings()
+                self.status_bar.showMessage(f"Directory filter updated: {len(new_selection)} directories selected")
+            else:
+                QMessageBox.warning(self, "No Directories Selected",
+                                  "Please select at least one directory to search.")
 
     def on_search_result_found(self, file_path, line_num, line_text):
         """Handle individual search result from worker thread"""
@@ -2132,6 +2285,8 @@ class CobolEditor(QMainWindow):
 
             # Add directory to workspace
             self.working_directories.append(directory)
+            # Automatically add to searchable directories
+            self.searchable_directories.append(directory)
             self.populate_tree()
             self.save_settings()
             self.status_bar.showMessage(f"Added to workspace: {directory}")
@@ -2151,6 +2306,9 @@ class CobolEditor(QMainWindow):
 
         if ok and directory:
             self.working_directories.remove(directory)
+            # Also remove from searchable directories if present
+            if directory in self.searchable_directories:
+                self.searchable_directories.remove(directory)
             self.populate_tree()
             self.save_settings()
             self.status_bar.showMessage(f"Removed from workspace: {directory}")

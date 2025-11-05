@@ -1027,12 +1027,11 @@ class CodeEditor(QPlainTextEdit):
 
         # Provide generous padding so the code column never touches or overlaps
         # the line numbers, even when using large fonts or fractional scaling.
-        # The padding consists of one additional digit width plus a small
-        # spacing buffer.
-        digit_width = self.fontMetrics().horizontalAdvance('9')
-        padding = digit_width + 10
+        # Add left padding (8px) + right padding (15px) for clear separation
+        left_padding = 8
+        right_padding = 15
 
-        return digit_text_width + padding
+        return left_padding + digit_text_width + right_padding
 
     def update_line_number_area_width(self, _):
         """Update the width of line number area"""
@@ -1070,11 +1069,16 @@ class CodeEditor(QPlainTextEdit):
         top = int(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
         bottom = top + int(self.blockBoundingRect(block).height())
 
+        # Add padding to align line numbers properly within the gutter
+        left_padding = 8
+        right_padding = 10
+
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
                 painter.setPen(fg_color)
-                painter.drawText(0, top, self.line_number_area.width() - 5,
+                painter.drawText(left_padding, top,
+                               self.line_number_area.width() - left_padding - right_padding,
                                self.fontMetrics().height(), Qt.AlignRight, number)
 
             block = block.next()

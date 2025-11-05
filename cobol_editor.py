@@ -1005,7 +1005,7 @@ class CodeEditor(QPlainTextEdit):
 
         self.highlighted_line_number = line_number
 
-        selection = QPlainTextEdit.ExtraSelection()
+        selection = QTextEdit.ExtraSelection()
         selection.format.setBackground(self.search_highlight_color)
         selection.format.setProperty(QTextFormat.FullWidthSelection, True)
 

@@ -1590,14 +1590,32 @@ class CobolEditor(QMainWindow):
             tab_widget = editor
             preview = None
 
-        editor.textChanged.connect(lambda: self.on_text_changed(editor))
-
         if not is_markdown:
             editor.update_line_number_area_width(0)
 
-        # Set content
+        # Set content before connecting change tracking so that loading a file
+        # doesn't immediately flag the tab as modified.  Some PySide widgets
+        # emit ``textChanged`` when text is programmatically inserted which
+        # previously caused files to appear dirty as soon as they were opened
+        # or focused.  Blocking the signal during the initial load ensures the
+        # modified state is only toggled after the user makes an actual edit.
         if content:
+            editor.blockSignals(True)
             editor.setPlainText(content)
+            editor.blockSignals(False)
+
+            # Reset the document's modified flag so that future edits are the
+            # only changes that mark the tab as dirty.
+            editor.document().setModified(False)
+        else:
+            editor.document().setModified(False)
+
+        editor.textChanged.connect(lambda: self.on_text_changed(editor))
+
+        if is_markdown:
+            # Ensure the preview reflects the loaded content when signals were
+            # blocked during ``setPlainText``.
+            tab_widget.update_preview()
 
         # Determine tab title
         tab_title = os.path.basename(file_path) if file_path else "Untitled"

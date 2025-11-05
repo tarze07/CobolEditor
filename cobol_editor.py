@@ -1018,11 +1018,21 @@ class CodeEditor(QPlainTextEdit):
     def line_number_area_width(self):
         """Calculate the width needed for line numbers"""
         digits = len(str(max(1, self.blockCount())))
-        # Add a little extra spacing so the code text does not overlap the
-        # line number gutter, especially with larger fonts.
-        extra_padding = 15
-        space = extra_padding + self.fontMetrics().horizontalAdvance('9') * digits
-        return space
+
+        # Determine how wide the current line number text can be. Using the
+        # entire number string instead of multiplying the width of a single
+        # character gives more accurate results for fonts that apply kerning
+        # or render differently under high DPI scaling.
+        digit_text_width = self.fontMetrics().horizontalAdvance('9' * digits)
+
+        # Provide generous padding so the code column never touches or overlaps
+        # the line numbers, even when using large fonts or fractional scaling.
+        # The padding consists of one additional digit width plus a small
+        # spacing buffer.
+        digit_width = self.fontMetrics().horizontalAdvance('9')
+        padding = digit_width + 10
+
+        return digit_text_width + padding
 
     def update_line_number_area_width(self, _):
         """Update the width of line number area"""

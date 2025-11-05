@@ -1027,6 +1027,80 @@ class CodeEditor(QPlainTextEdit):
             block_number += 1
 
 
+class MarkdownPreviewWidget(QWidget):
+    """Composite widget with a code editor and live Markdown preview."""
+
+    def __init__(self, main_window, theme, font, parent=None):
+        super().__init__(parent)
+        self.main_window = main_window
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.splitter = QSplitter(Qt.Horizontal)
+        layout.addWidget(self.splitter)
+
+        # Create the code editor portion for raw Markdown
+        self.editor = CodeEditor(self)
+        self.editor.main_window = main_window
+        self.splitter.addWidget(self.editor)
+
+        # Create the preview pane
+        self.preview = QTextEdit()
+        self.preview.setReadOnly(True)
+        self.preview.setAcceptRichText(True)
+        self.preview.setPlaceholderText("Markdown preview")
+        self.splitter.addWidget(self.preview)
+
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 1)
+
+        # Apply initial font and theme
+        self.apply_font(font)
+        self.apply_theme(theme)
+
+        # Update preview whenever markdown changes
+        self.editor.textChanged.connect(self.update_preview)
+
+    def update_preview(self):
+        """Render the current Markdown content in the preview pane."""
+        markdown_text = self.editor.toPlainText()
+        # QTextEdit supports Markdown rendering via setMarkdown
+        self.preview.setMarkdown(markdown_text)
+
+    def apply_font(self, font):
+        """Apply font settings to both editor and preview."""
+        self.editor.setFont(font)
+        self.editor.update_line_number_area_width(0)
+        self.preview.document().setDefaultFont(font)
+
+    def apply_theme(self, theme):
+        """Apply color theme to editor and preview."""
+        palette = self.editor.palette()
+        palette.setColor(QPalette.Base, QColor(theme['bg']))
+        palette.setColor(QPalette.Text, QColor(theme['fg']))
+        self.editor.setPalette(palette)
+
+        line_palette = self.editor.line_number_area.palette()
+        line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+        line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+        self.editor.line_number_area.setPalette(line_palette)
+        self.editor.line_number_area.update()
+
+        preview_palette = self.preview.palette()
+        preview_palette.setColor(QPalette.Base, QColor(theme['bg']))
+        preview_palette.setColor(QPalette.Text, QColor(theme['fg']))
+        self.preview.setPalette(preview_palette)
+
+    def setPlainText(self, text):
+        """Proxy to set the Markdown text in the editor."""
+        self.editor.setPlainText(text)
+
+    def toPlainText(self):
+        """Proxy to access the raw Markdown text."""
+        return self.editor.toPlainText()
+
+
 class CobolEditor(QMainWindow):
     def __init__(self, file_to_open=None):
         super().__init__()
@@ -1053,6 +1127,7 @@ class CobolEditor(QMainWindow):
         self.font_size = 18
         self.font_family = 'Consolas'
         self.current_theme = 'Light'
+        self.markdown_extensions = {'.md', '.markdown', '.mdown', '.mkd'}
 
         # Default syntax highlighter mappings
         self.default_syntax_mappings = {
@@ -1164,6 +1239,13 @@ class CobolEditor(QMainWindow):
 
         # Default to COBOL if no match
         return CobolSyntaxHighlighter
+
+    def is_markdown_file(self, file_path):
+        """Check whether the provided path points to a Markdown file."""
+        if not file_path:
+            return False
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in self.markdown_extensions
 
     def read_file_with_encoding(self, file_path):
         """
@@ -1477,51 +1559,68 @@ class CobolEditor(QMainWindow):
 
     def create_new_tab(self, file_path=None, content=""):
         """Create a new tab with a code editor"""
-        editor = CodeEditor(self)
+        theme = self.themes[self.current_theme]
+        font = QFont(self.font_family, self.font_size)
+        font.setStyleHint(QFont.Monospace)
 
-        # Get the appropriate highlighter class for this file
-        highlighter_class = self.get_highlighter_for_file(file_path)
-        highlighter = highlighter_class(editor.document(), self.themes[self.current_theme])
+        is_markdown = self.is_markdown_file(file_path)
+
+        if is_markdown:
+            tab_widget = MarkdownPreviewWidget(self, theme, font)
+            editor = tab_widget.editor
+            preview = tab_widget.preview
+            highlighter = None
+        else:
+            editor = CodeEditor(self)
+            editor.setFont(font)
+
+            palette = editor.palette()
+            palette.setColor(QPalette.Base, QColor(theme['bg']))
+            palette.setColor(QPalette.Text, QColor(theme['fg']))
+            editor.setPalette(palette)
+
+            line_palette = editor.line_number_area.palette()
+            line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+            line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+            editor.line_number_area.setPalette(line_palette)
+
+            highlighter_class = self.get_highlighter_for_file(file_path)
+            highlighter = highlighter_class(editor.document(), theme)
+
+            tab_widget = editor
+            preview = None
 
         editor.textChanged.connect(lambda: self.on_text_changed(editor))
 
-        # Apply current font settings
-        font = QFont(self.font_family, self.font_size)
-        font.setStyleHint(QFont.Monospace)
-        editor.setFont(font)
-
-        # Apply current theme
-        theme = self.themes[self.current_theme]
-        palette = editor.palette()
-        palette.setColor(QPalette.Base, QColor(theme['bg']))
-        palette.setColor(QPalette.Text, QColor(theme['fg']))
-        editor.setPalette(palette)
-
-        # Update line number area colors
-        line_palette = editor.line_number_area.palette()
-        line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
-        line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
-        editor.line_number_area.setPalette(line_palette)
+        if not is_markdown:
+            editor.update_line_number_area_width(0)
 
         # Set content
         if content:
             editor.setPlainText(content)
 
         # Determine tab title
-        if file_path:
-            tab_title = os.path.basename(file_path)
-        else:
-            tab_title = "Untitled"
+        tab_title = os.path.basename(file_path) if file_path else "Untitled"
 
         # Add tab
-        tab_index = self.tab_widget.addTab(editor, tab_title)
+        tab_index = self.tab_widget.addTab(tab_widget, tab_title)
 
         # Track the file
-        self.open_files[tab_index] = {
+        file_info = {
             'path': file_path,
             'modified': False,
-            'highlighter': highlighter
+            'widget': tab_widget,
+            'editor': editor,
+            'is_markdown': is_markdown
         }
+
+        if highlighter:
+            file_info['highlighter'] = highlighter
+
+        if preview:
+            file_info['preview'] = preview
+
+        self.open_files[tab_index] = file_info
 
         # Switch to new tab
         self.tab_widget.setCurrentIndex(tab_index)
@@ -1533,7 +1632,7 @@ class CobolEditor(QMainWindow):
         if index < 0 or index >= self.tab_widget.count():
             return
 
-        editor = self.tab_widget.widget(index)
+        editor = self.get_editor_by_index(index)
         file_info = self.open_files.get(index, {})
 
         # Check if modified
@@ -1559,16 +1658,20 @@ class CobolEditor(QMainWindow):
 
         # Remove tab and cleanup
         self.tab_widget.removeTab(index)
-        if index in self.open_files:
-            del self.open_files[index]
+        self.open_files.pop(index, None)
 
-        # Reindex open_files dictionary
-        new_open_files = {}
+        # Reindex open_files dictionary to match new tab order
+        remaining_infos = self.open_files.copy()
+        self.open_files = {}
         for i in range(self.tab_widget.count()):
-            old_index = list(self.open_files.keys())[i] if i < len(self.open_files) else i
-            if old_index in self.open_files:
-                new_open_files[i] = self.open_files[old_index]
-        self.open_files = new_open_files
+            widget = self.tab_widget.widget(i)
+            matched_key = None
+            for old_index, info in remaining_infos.items():
+                if info.get('widget') is widget:
+                    matched_key = old_index
+                    break
+            if matched_key is not None:
+                self.open_files[i] = remaining_infos.pop(matched_key)
 
         # Create new tab if all tabs are closed
         if self.tab_widget.count() == 0:
@@ -1576,7 +1679,25 @@ class CobolEditor(QMainWindow):
 
     def get_current_editor(self):
         """Get the current active editor widget"""
-        return self.tab_widget.currentWidget()
+        current_index = self.tab_widget.currentIndex()
+        if current_index < 0:
+            return None
+        return self.get_editor_by_index(current_index)
+
+    def get_editor_by_index(self, index):
+        """Retrieve the editor widget for a given tab index."""
+        if index < 0:
+            return None
+        file_info = self.open_files.get(index)
+        if file_info and file_info.get('editor'):
+            return file_info['editor']
+
+        widget = self.tab_widget.widget(index)
+        if isinstance(widget, CodeEditor):
+            return widget
+        if isinstance(widget, MarkdownPreviewWidget):
+            return widget.editor
+        return None
 
     def on_tab_changed(self, index):
         """Handle tab change event"""
@@ -1771,9 +1892,9 @@ class CobolEditor(QMainWindow):
             content, encoding = self.read_file_with_encoding(file_path)
             # Close the default empty tab if it's still empty
             if self.tab_widget.count() == 1:
-                first_editor = self.tab_widget.widget(0)
+                first_editor = self.get_editor_by_index(0)
                 file_info = self.open_files.get(0, {})
-                if not file_info.get('path') and not first_editor.toPlainText():
+                if first_editor and not file_info.get('path') and not first_editor.toPlainText():
                     self.tab_widget.removeTab(0)
                     self.open_files.clear()
             self.create_new_tab(file_path, content)
@@ -1945,10 +2066,14 @@ class CobolEditor(QMainWindow):
 
         # Update all open tabs
         for i in range(self.tab_widget.count()):
-            editor = self.tab_widget.widget(i)
-            if editor:
-                editor.setFont(font)
-                editor.update_line_number_area_width(0)
+            widget = self.tab_widget.widget(i)
+            if isinstance(widget, MarkdownPreviewWidget):
+                widget.apply_font(font)
+            else:
+                editor = self.get_editor_by_index(i)
+                if editor:
+                    editor.setFont(font)
+                    editor.update_line_number_area_width(0)
 
     def configure_syntax_highlighting(self):
         """Open dialog to configure syntax highlighting mappings"""
@@ -1974,26 +2099,28 @@ class CobolEditor(QMainWindow):
 
         # Update all tabs
         for i in range(self.tab_widget.count()):
-            editor = self.tab_widget.widget(i)
-            if editor:
-                # Update text area colors
-                palette = editor.palette()
-                palette.setColor(QPalette.Base, QColor(theme['bg']))
-                palette.setColor(QPalette.Text, QColor(theme['fg']))
-                editor.setPalette(palette)
+            widget = self.tab_widget.widget(i)
+            file_info = self.open_files.get(i, {})
 
-                # Update line number area colors
-                line_palette = editor.line_number_area.palette()
-                line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
-                line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
-                editor.line_number_area.setPalette(line_palette)
+            if isinstance(widget, MarkdownPreviewWidget):
+                widget.apply_theme(theme)
+            else:
+                editor = self.get_editor_by_index(i)
+                if editor:
+                    palette = editor.palette()
+                    palette.setColor(QPalette.Base, QColor(theme['bg']))
+                    palette.setColor(QPalette.Text, QColor(theme['fg']))
+                    editor.setPalette(palette)
 
-                # Update syntax highlighter for this tab
-                if i in self.open_files and 'highlighter' in self.open_files[i]:
-                    self.open_files[i]['highlighter'].update_theme(theme)
+                    line_palette = editor.line_number_area.palette()
+                    line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
+                    line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
+                    editor.line_number_area.setPalette(line_palette)
 
-                # Force redraw
-                editor.line_number_area.update()
+                    if 'highlighter' in file_info:
+                        file_info['highlighter'].update_theme(theme)
+
+                    editor.line_number_area.update()
 
         # Update tree colors
         tree_palette = self.file_tree.palette()

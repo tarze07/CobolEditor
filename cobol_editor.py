@@ -940,6 +940,7 @@ class CodeEditor(QPlainTextEdit):
         self.line_number_area = LineNumberArea(self)
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
+        self._line_number_right_padding = 12
         self.update_line_number_area_width(0)
 
         # Set monospace font
@@ -1015,10 +1016,25 @@ class CodeEditor(QPlainTextEdit):
 
         self.setExtraSelections([selection])
 
+    def setFont(self, font):
+        """Ensure gutter metrics update when the font changes."""
+        super().setFont(font)
+        # Recalculate the viewport margins so the code column never overlaps
+        # the line number gutter after font updates.
+        self.update_line_number_area_width(0)
+        self.line_number_area.update()
+
     def line_number_area_width(self):
         """Calculate the width needed for line numbers"""
         digits = len(str(max(1, self.blockCount())))
-        space = 10 + self.fontMetrics().horizontalAdvance('9') * digits
+        metrics = self.fontMetrics()
+        digit_width = metrics.horizontalAdvance('9')
+        # Reserve padding on both sides of the numbers. The right padding keeps
+        # a clear gap between the gutter and code column, scaling with font size
+        # so larger fonts remain readable.
+        left_padding = max(6, int(digit_width * 0.4))
+        self._line_number_right_padding = max(12, int(digit_width * 0.8))
+        space = left_padding + digit_width * digits + self._line_number_right_padding
         return space
 
     def update_line_number_area_width(self, _):
@@ -1061,8 +1077,9 @@ class CodeEditor(QPlainTextEdit):
             if block.isVisible() and bottom >= event.rect().top():
                 number = str(block_number + 1)
                 painter.setPen(fg_color)
-                painter.drawText(0, top, self.line_number_area.width() - 5,
-                               self.fontMetrics().height(), Qt.AlignRight, number)
+                text_width = self.line_number_area.width() - self._line_number_right_padding
+                painter.drawText(0, top, text_width,
+                                 self.fontMetrics().height(), Qt.AlignRight, number)
 
             block = block.next()
             top = bottom

@@ -1018,7 +1018,10 @@ class CodeEditor(QPlainTextEdit):
     def line_number_area_width(self):
         """Calculate the width needed for line numbers"""
         digits = len(str(max(1, self.blockCount())))
-        space = 10 + self.fontMetrics().horizontalAdvance('9') * digits
+        # Add a little extra spacing so the code text does not overlap the
+        # line number gutter, especially with larger fonts.
+        extra_padding = 15
+        space = extra_padding + self.fontMetrics().horizontalAdvance('9') * digits
         return space
 
     def update_line_number_area_width(self, _):

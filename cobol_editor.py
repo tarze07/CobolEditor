@@ -950,6 +950,10 @@ class CodeEditor(QPlainTextEdit):
         # Enable tab key
         self.setTabStopDistance(40)
 
+        # Track highlighted line from search results
+        self.search_highlight_color = QColor("#fff59d")
+        self.highlighted_line_number = None
+
     def contextMenuEvent(self, event):
         """Create custom context menu with search in working directory option"""
         menu = self.createStandardContextMenu()
@@ -971,6 +975,45 @@ class CodeEditor(QPlainTextEdit):
         """Search for selected text in working directory"""
         if self.main_window and hasattr(self.main_window, 'search_in_working_directory_for_text'):
             self.main_window.search_in_working_directory_for_text(text)
+
+    def set_search_highlight_color(self, color):
+        """Set the background color used when highlighting a search result line."""
+        if isinstance(color, QColor):
+            self.search_highlight_color = color
+        else:
+            self.search_highlight_color = QColor(color)
+
+        if self.highlighted_line_number is not None:
+            # Refresh highlight with new color
+            self.highlight_line(self.highlighted_line_number)
+
+    def clear_search_highlight(self):
+        """Remove any active search line highlight."""
+        self.highlighted_line_number = None
+        self.setExtraSelections([])
+
+    def highlight_line(self, line_number):
+        """Highlight a specific 1-based line number in the editor."""
+        if line_number is None or line_number <= 0:
+            self.clear_search_highlight()
+            return
+
+        block = self.document().findBlockByLineNumber(line_number - 1)
+        if not block.isValid():
+            self.clear_search_highlight()
+            return
+
+        self.highlighted_line_number = line_number
+
+        selection = QPlainTextEdit.ExtraSelection()
+        selection.format.setBackground(self.search_highlight_color)
+        selection.format.setProperty(QTextFormat.FullWidthSelection, True)
+
+        cursor = QTextCursor(block)
+        cursor.clearSelection()
+        selection.cursor = cursor
+
+        self.setExtraSelections([selection])
 
     def line_number_area_width(self):
         """Calculate the width needed for line numbers"""
@@ -1086,6 +1129,8 @@ class MarkdownPreviewWidget(QWidget):
         line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
         self.editor.line_number_area.setPalette(line_palette)
         self.editor.line_number_area.update()
+
+        self.editor.set_search_highlight_color(QColor(theme['search_bg']))
 
         preview_palette = self.preview.palette()
         preview_palette.setColor(QPalette.Base, QColor(theme['bg']))
@@ -1583,6 +1628,8 @@ class CobolEditor(QMainWindow):
             line_palette.setColor(QPalette.Window, QColor(theme['line_numbers_bg']))
             line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
             editor.line_number_area.setPalette(line_palette)
+
+            editor.set_search_highlight_color(QColor(theme['search_bg']))
 
             highlighter_class = self.get_highlighter_for_file(file_path)
             highlighter = highlighter_class(editor.document(), theme)
@@ -2135,6 +2182,8 @@ class CobolEditor(QMainWindow):
                     line_palette.setColor(QPalette.WindowText, QColor(theme['line_numbers_fg']))
                     editor.line_number_area.setPalette(line_palette)
 
+                    editor.set_search_highlight_color(QColor(theme['search_bg']))
+
                     if 'highlighter' in file_info:
                         file_info['highlighter'].update_theme(theme)
 
@@ -2404,6 +2453,7 @@ class CobolEditor(QMainWindow):
                     cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
                     editor.setTextCursor(cursor)
                     editor.centerCursor()
+                    editor.highlight_line(line_num)
                     self.status_bar.showMessage(f"Jumped to line {line_num} in {file_path}")
                 return
 
@@ -2420,6 +2470,7 @@ class CobolEditor(QMainWindow):
                 cursor.movePosition(QTextCursor.Down, QTextCursor.MoveAnchor, line_num - 1)
                 editor.setTextCursor(cursor)
                 editor.centerCursor()
+                editor.highlight_line(line_num)
 
             self.status_bar.showMessage(f"Opened: {file_path} at line {line_num} (encoding: {encoding})")
         except Exception as e:

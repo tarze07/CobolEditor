@@ -1696,6 +1696,23 @@ class CobolEditor(QMainWindow):
             # Reset the document's modified flag so that future edits are the
             # only changes that mark the tab as dirty.
             editor.document().setModified(False)
+
+            # ``blockSignals`` prevents ``blockCountChanged`` from firing while
+            # the document is populated, so the gutter width is still based on
+            # the default single-digit margin at this point.  Refresh the
+            # margins explicitly so the first column of code is never obscured
+            # until the user manually resizes or zooms the editor.
+            editor.update_line_number_area_width(0)
+            gutter_rect = editor.contentsRect()
+            editor.line_number_area.setGeometry(
+                QRect(
+                    gutter_rect.left(),
+                    gutter_rect.top(),
+                    editor.line_number_area_width(),
+                    gutter_rect.height(),
+                )
+            )
+            editor.line_number_area.update()
         else:
             editor.document().setModified(False)
 

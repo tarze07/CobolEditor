@@ -940,12 +940,19 @@ class CodeEditor(QPlainTextEdit):
         self.line_number_area = LineNumberArea(self)
         self.blockCountChanged.connect(self.update_line_number_area_width)
         self.updateRequest.connect(self.update_line_number_area)
-        self.update_line_number_area_width(0)
 
-        # Set monospace font
+        # Set monospace font before calculating the initial gutter width so
+        # that the viewport margins account for the actual metrics from the
+        # outset.
         font = QFont("Consolas", 18)
         font.setStyleHint(QFont.Monospace)
         self.setFont(font)
+
+        # Ensure the viewport respects the initial font metrics. ``setFont``
+        # already triggers a recalculation, but calling it here keeps the
+        # intent explicit and avoids relying on side effects during
+        # construction.
+        self.update_line_number_area_width(0)
 
         # Enable tab key
         self.setTabStopDistance(40)
@@ -1032,6 +1039,24 @@ class CodeEditor(QPlainTextEdit):
         right_padding = 15
 
         return left_padding + digit_text_width + right_padding
+
+    def setFont(self, font):
+        """Apply the font and immediately refresh the gutter geometry."""
+        super().setFont(font)
+
+        # When the font changes, the required gutter width changes as well.
+        # Updating the margins and the line number area geometry right away
+        # prevents the numbers from overlapping the first column of text until
+        # another repaint occurs (for example after manually tweaking the font
+        # size in the UI).
+        if hasattr(self, "line_number_area"):
+            self.update_line_number_area_width(0)
+
+            cr = self.contentsRect()
+            self.line_number_area.setGeometry(
+                QRect(cr.left(), cr.top(), self.line_number_area_width(), cr.height())
+            )
+            self.line_number_area.update()
 
     def update_line_number_area_width(self, _):
         """Update the width of line number area"""
